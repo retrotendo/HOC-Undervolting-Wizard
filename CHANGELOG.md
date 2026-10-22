@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.4.0-beta.2
+
+- Added the full Battery-guide starting setup to the Wizard preparation screen.
+- Added CPU Max/Boost 1785 MHz, GPU Max 384 MHz and RAM Max 1600 MHz stock limits.
+- Added Uncapped Clocks OFF, HP Mode OFF, Overwrite Boost Mode OFF and Auto CPU RAM OC OFF preparation guidance.
+- Added a hard Horizon OC pre-flight before every built-in test.
+- CPU, GPU and RAM Temporary Overrides are all read from `hoc:clk` and compared with the exact test target.
+- A missing/wrong override blocks the test and shows Expected vs Current values; no PASS/FAIL is recorded.
+
 All notable changes to HOC Undervolting Wizard are documented here.
 
 The project follows semantic versioning where practical. Pre-release builds are used until the integrated stress-test engine has been validated on real Switch hardware.

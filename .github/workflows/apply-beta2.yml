@@ -1,0 +1,37 @@
+name: Apply beta2 preflight patch
+
+on:
+  push:
+    branches:
+      - beta2-preflight
+    paths:
+      - 'tools/apply_beta2.py'
+      - '.github/workflows/apply-beta2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout beta2 branch
+        uses: actions/checkout@v4
+        with:
+          ref: beta2-preflight
+
+      - name: Apply beta2 source patch
+        run: python3 tools/apply_beta2.py
+
+      - name: Commit patched files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add source/main.cpp Makefile README.md THIRD_PARTY_LICENSES.md CHANGELOG.md
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Add Battery setup and hard override preflight"
+            git push origin HEAD:beta2-preflight
+          fi

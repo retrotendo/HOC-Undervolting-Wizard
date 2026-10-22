@@ -1,4 +1,21 @@
+/*
+ * HOC Undervolting Wizard integrated stability-test controller.
+ * Copyright (C) 2026 HOC Undervolting Wizard contributors.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 only.
+ * See LICENSE and THIRD_PARTY_LICENSES.md.
+ *
+ * CPU and RAM test cores are GPLv2 components credited in
+ * THIRD_PARTY_LICENSES.md. The GPU test implementation in this file was
+ * written for this project against the public deko3d API.
+ *
+ * SPDX-License-Identifier: GPL-2.0-only
+ */
+
 #include "stress_tests.hpp"
+#include "cpu_stress.h"
+#include "mt_cpu.h"
 
 #include <switch.h>
 #include <deko3d.h>
@@ -17,161 +34,117 @@ namespace {
 
 using Clock = std::chrono::steady_clock;
 
+enum FailureKind : int {
+    FailureNone = 0,
+    FailureCpuVerify = 1,
+    FailureMemtester = 2,
+    FailureGpuMismatch = 3,
+    FailureGpuQueue = 4,
+};
+
 struct Context {
     std::atomic<bool> stop{false};
     std::atomic<bool> failed{false};
     std::atomic<int> initError{0};
-    std::atomic<std::uint64_t> iterations{0};
+    std::atomic<int> failureKind{FailureNone};
+
+    std::atomic<std::uint64_t> cpuIterations{0};
+    std::atomic<std::uint64_t> ramLoops{0};
+    std::atomic<std::uint64_t> gpuIterations{0};
     std::atomic<std::uint64_t> errors{0};
     std::atomic<std::uint64_t> mismatches{0};
+
     std::atomic<std::uint64_t> mismatchIndex{0};
     std::atomic<std::uint64_t> expected{0};
     std::atomic<std::uint64_t> actual{0};
+
     std::atomic<std::uint64_t> ramBytes{0};
+    std::atomic<const char*> ramTest{"-"};
+    std::atomic<int> ramProgressPermille{0};
 };
 
-std::uint32_t mix32(std::uint32_t x) {
-    x ^= x >> 16;
-    x *= 0x7feb352du;
-    x ^= x >> 15;
-    x *= 0x846ca68bu;
-    x ^= x >> 16;
-    return x;
-}
-
-std::uint64_t cpuKernel(std::uint32_t seed) {
-    constexpr int N = 24;
-    std::uint32_t a[N * N];
-    std::uint32_t b[N * N];
-
-    for (int i = 0; i < N * N; ++i) {
-        a[i] = mix32(seed ^ (std::uint32_t(i) * 0x9e3779b9u));
-        b[i] = mix32((seed + 0x01234567u) ^ (std::uint32_t(i) * 0x85ebca6bu));
-    }
-
-    std::uint64_t h = 0xcbf29ce484222325ULL;
-    for (int i = 0; i < N; ++i) {
-        for (int j = 0; j < N; ++j) {
-            std::uint64_t acc = 0;
-            for (int k = 0; k < N; ++k)
-                acc += std::uint64_t(a[i * N + k]) * std::uint64_t(b[k * N + j]);
-            h ^= acc + (std::uint64_t(std::uint32_t(i)) << 32) + std::uint32_t(j);
-            h *= 1099511628211ULL;
-        }
-    }
-    return h;
-}
-
-struct CpuVector {
-    std::uint32_t seed;
-    std::uint64_t expected;
-};
-
-constexpr CpuVector CPU_VECTORS[] = {
-    {0x10203040u, 0x1fb02e074a8ebe56ULL},
-    {0x1a2b3c4du, 0x8c8b5b076470cacfULL},
-    {0xdeadbeefu, 0x5f85be67bdae1853ULL},
-    {0x13579bdfu, 0x340d2eaf1607b386ULL},
-    {0x2468ace0u, 0x661e8f990658bb55ULL},
-    {0x55aa33ccu, 0x5adc09c21684cef5ULL},
-    {0xc001d00du, 0x4df018d19687af9eULL},
-    {0x31415926u, 0x5e90ce327a55fb18ULL},
-};
-
-void failMismatch(Context& c, std::uint64_t index, std::uint64_t expected, std::uint64_t actual) {
-    c.mismatchIndex.store(index, std::memory_order_relaxed);
-    c.expected.store(expected, std::memory_order_relaxed);
-    c.actual.store(actual, std::memory_order_relaxed);
-    c.mismatches.fetch_add(1, std::memory_order_relaxed);
+void markFailure(Context& c, FailureKind kind, std::uint64_t mismatches = 1) {
+    c.failureKind.store(kind, std::memory_order_relaxed);
+    c.mismatches.store(mismatches, std::memory_order_relaxed);
     c.errors.fetch_add(1, std::memory_order_relaxed);
     c.failed.store(true, std::memory_order_release);
     c.stop.store(true, std::memory_order_release);
 }
 
-void cpuWorker(Context& c, unsigned workerId) {
-    std::uint64_t n = workerId;
-    while (!c.stop.load(std::memory_order_acquire)) {
-        const CpuVector& v = CPU_VECTORS[n % (sizeof(CPU_VECTORS) / sizeof(CPU_VECTORS[0]))];
-        const std::uint64_t got = cpuKernel(v.seed);
-        if (got != v.expected) {
-            failMismatch(c, n, v.expected, got);
-            return;
-        }
-        c.iterations.fetch_add(1, std::memory_order_relaxed);
-        ++n;
-    }
+void failGpuMismatch(Context& c, std::uint64_t index, std::uint64_t expected, std::uint64_t actual) {
+    c.mismatchIndex.store(index, std::memory_order_relaxed);
+    c.expected.store(expected, std::memory_order_relaxed);
+    c.actual.store(actual, std::memory_order_relaxed);
+    markFailure(c, FailureGpuMismatch, 1);
 }
 
-void ramWorker(Context& c) {
-    static constexpr std::size_t sizes[] = {
-        128u * 1024u * 1024u,
-         96u * 1024u * 1024u,
-         64u * 1024u * 1024u,
-         32u * 1024u * 1024u,
-         16u * 1024u * 1024u,
-    };
-
-    volatile std::uint64_t* mem = nullptr;
-    std::size_t bytes = 0;
-    for (std::size_t candidate : sizes) {
-        void* p = std::malloc(candidate);
-        if (p) {
-            mem = static_cast<volatile std::uint64_t*>(p);
-            bytes = candidate;
-            break;
-        }
-    }
-
-    if (!mem) {
-        c.initError.store(1, std::memory_order_release);
+/*
+ * CPU engine
+ * ----------
+ * cpu_stress mode 2 is the Wizard adaptation: the original Benchmark
+ * Toolbox / Stress-NX Matrixprod workload runs continuously and each pass
+ * is followed by the original Hanoi verification workload. Matrixprod itself
+ * is unchanged; Hanoi gives us automatic arithmetic-error detection.
+ */
+void cpuWorker(Context& c) {
+    cpu_stress_start(2);
+    if (!cpu_stress_running()) {
+        c.initError.store(20, std::memory_order_release);
         c.stop.store(true, std::memory_order_release);
         return;
     }
 
-    c.ramBytes.store(bytes, std::memory_order_release);
-    const std::size_t words = bytes / sizeof(std::uint64_t);
-    const std::uint64_t patterns[] = {
-        0x0000000000000000ULL,
-        0xffffffffffffffffULL,
-        0xaaaaaaaaaaaaaaaaULL,
-        0x5555555555555555ULL,
-        0x0123456789abcdefULL,
-        0xfedcba9876543210ULL,
-    };
-
-    std::uint64_t round = 0;
     while (!c.stop.load(std::memory_order_acquire)) {
-        for (std::uint64_t base : patterns) {
-            const std::uint64_t salt = round * 0x9e3779b97f4a7c15ULL;
-            for (std::size_t i = 0; i < words; ++i) {
-                if ((i & 0x3ffffu) == 0 && c.stop.load(std::memory_order_acquire)) {
-                    std::free(const_cast<std::uint64_t*>(mem));
-                    return;
-                }
-                mem[i] = base ^ salt ^ (std::uint64_t(i) * 0xd6e8feb86659fd93ULL);
-            }
-
-            for (std::size_t i = 0; i < words; ++i) {
-                if ((i & 0x3ffffu) == 0 && c.stop.load(std::memory_order_acquire)) {
-                    std::free(const_cast<std::uint64_t*>(mem));
-                    return;
-                }
-                const std::uint64_t exp = base ^ salt ^ (std::uint64_t(i) * 0xd6e8feb86659fd93ULL);
-                const std::uint64_t got = mem[i];
-                if (got != exp) {
-                    failMismatch(c, i, exp, got);
-                    std::free(const_cast<std::uint64_t*>(mem));
-                    return;
-                }
-            }
-            c.iterations.fetch_add(1, std::memory_order_relaxed);
+        cpu_stress_status_t st{};
+        cpu_stress_get(&st);
+        c.cpuIterations.store(st.iters, std::memory_order_relaxed);
+        if (st.mismatches) {
+            markFailure(c, FailureCpuVerify, st.mismatches);
+            break;
         }
-        ++round;
+        svcSleepThread(50'000'000);
     }
 
-    std::free(const_cast<std::uint64_t*>(mem));
+    cpu_stress_stop();
 }
 
+/*
+ * RAM engine
+ * ----------
+ * mode 0 is the full CPU memtester sequence. mode 1 keeps one memtester
+ * worker and adds the Benchmark Toolbox bandwidth burn-in workers; that mode
+ * is used together with Matrixprod for the Wizard's combined CPU+RAM test.
+ */
+void ramWorker(Context& c, int mode) {
+    mt_cpu_start(mode);
+    if (!mt_cpu_running()) {
+        c.initError.store(30, std::memory_order_release);
+        c.stop.store(true, std::memory_order_release);
+        return;
+    }
+
+    while (!c.stop.load(std::memory_order_acquire)) {
+        mt_cpu_status_t st{};
+        mt_cpu_get(&st);
+        c.ramLoops.store(st.loop + st.burnin_iters, std::memory_order_relaxed);
+        c.ramBytes.store(st.total_mb * 1024ULL * 1024ULL, std::memory_order_relaxed);
+        c.ramTest.store(st.test ? st.test : "-", std::memory_order_relaxed);
+        int p = int(st.progress * 1000.0f);
+        if (p < 0) p = 0;
+        if (p > 1000) p = 1000;
+        c.ramProgressPermille.store(p, std::memory_order_relaxed);
+
+        if (st.error || st.mismatches) {
+            markFailure(c, FailureMemtester, st.mismatches ? st.mismatches : 1);
+            break;
+        }
+        svcSleepThread(50'000'000);
+    }
+
+    mt_cpu_stop();
+}
+
+/* ----- Original project GPU compute/memory verifier using deko3d API. ----- */
 std::uint32_t gpuTransform(std::uint32_t index, std::uint32_t value) {
     std::uint32_t x = value ^ (index * 0x9e3779b9u);
     for (std::uint32_t r = 0; r < 192u; ++r) {
@@ -355,6 +328,7 @@ void gpuWorker(Context& c) {
         dkQueueWaitFence(queue, &fence);
 
         if (dkQueueIsInErrorState(queue)) {
+            c.failureKind.store(FailureGpuQueue, std::memory_order_relaxed);
             c.errors.fetch_add(1, std::memory_order_relaxed);
             c.failed.store(true, std::memory_order_release);
             c.stop.store(true, std::memory_order_release);
@@ -365,12 +339,12 @@ void gpuWorker(Context& c) {
             sampleExpected[s] = gpuTransform(sampleIndex[s], sampleExpected[s]);
             const std::uint32_t got = data[sampleIndex[s]];
             if (got != sampleExpected[s]) {
-                failMismatch(c, sampleIndex[s], sampleExpected[s], got);
+                failGpuMismatch(c, sampleIndex[s], sampleExpected[s], got);
                 break;
             }
         }
         if (c.failed.load(std::memory_order_acquire)) break;
-        c.iterations.fetch_add(1, std::memory_order_relaxed);
+        c.gpuIterations.fetch_add(1, std::memory_order_relaxed);
     }
 
     dkQueueWaitIdle(queue);
@@ -383,6 +357,20 @@ void gpuWorker(Context& c) {
     romfsExit();
 }
 
+const char* creditLine(Kind kind) {
+    switch (kind) {
+        case Kind::Cpu:
+            return "Credits: Lineon / Horizon-OC - GPLv2";
+        case Kind::Ram:
+            return "Credits: Simon Kirby, Charles Cazabon / Horizon-OC - GPLv2";
+        case Kind::Combined:
+            return "Credits: Stress-NX + memtester / Horizon-OC - GPLv2";
+        case Kind::Gpu:
+            return "GPU code: HOC Wizard; deko3d by fincs (permissive)";
+    }
+    return "";
+}
+
 void renderProgress(Kind kind, int durationSeconds, std::uint64_t elapsedMs, const Context& c) {
     const std::uint64_t totalMs = std::uint64_t(durationSeconds) * 1000ULL;
     const unsigned pct = totalMs ? unsigned((elapsedMs >= totalMs ? totalMs : elapsedMs) * 100ULL / totalMs) : 100u;
@@ -392,6 +380,8 @@ void renderProgress(Kind kind, int durationSeconds, std::uint64_t elapsedMs, con
     consoleClear();
     std::printf("\x1b[1;1H\x1b[36mHOC Undervolting Wizard\x1b[0m\n");
     std::printf("Built-in %s\n", kindName(kind));
+    std::printf("%s\n", creditLine(kind));
+    std::printf("GPLv2-only | NO WARRANTY | Full notices in repo\n");
     std::printf("------------------------------------------------------------\n\n");
 
     const std::uint64_t sec = elapsedMs / 1000ULL;
@@ -399,13 +389,23 @@ void renderProgress(Kind kind, int durationSeconds, std::uint64_t elapsedMs, con
     std::printf("Time       %02llu:%02llu / %02llu:%02llu\n",
         (unsigned long long)(sec / 60ULL), (unsigned long long)(sec % 60ULL),
         (unsigned long long)(target / 60ULL), (unsigned long long)(target % 60ULL));
-    std::printf("Iterations %llu\n", (unsigned long long)c.iterations.load(std::memory_order_relaxed));
-    std::printf("Errors     %llu\n", (unsigned long long)c.errors.load(std::memory_order_relaxed));
-    std::printf("Mismatches %llu\n", (unsigned long long)c.mismatches.load(std::memory_order_relaxed));
 
-    const std::uint64_t ram = c.ramBytes.load(std::memory_order_relaxed);
-    if (ram)
-        std::printf("RAM tested  %llu MiB per pass\n", (unsigned long long)(ram / 1024ULL / 1024ULL));
+    if (kind == Kind::Cpu || kind == Kind::Combined)
+        std::printf("CPU passes  %llu\n", (unsigned long long)c.cpuIterations.load(std::memory_order_relaxed));
+
+    if (kind == Kind::Ram || kind == Kind::Combined) {
+        std::printf("RAM loops   %llu\n", (unsigned long long)c.ramLoops.load(std::memory_order_relaxed));
+        std::printf("RAM test    %s\n", c.ramTest.load(std::memory_order_relaxed));
+        const std::uint64_t ram = c.ramBytes.load(std::memory_order_relaxed);
+        if (ram)
+            std::printf("RAM mapped  %llu MiB\n", (unsigned long long)(ram / 1024ULL / 1024ULL));
+    }
+
+    if (kind == Kind::Gpu)
+        std::printf("GPU passes  %llu\n", (unsigned long long)c.gpuIterations.load(std::memory_order_relaxed));
+
+    std::printf("Errors      %llu\n", (unsigned long long)c.errors.load(std::memory_order_relaxed));
+    std::printf("Mismatches  %llu\n", (unsigned long long)c.mismatches.load(std::memory_order_relaxed));
 
     std::printf("\n[");
     for (unsigned i = 0; i < barWidth; ++i) std::putchar(i < filled ? '#' : '-');
@@ -419,9 +419,9 @@ void renderProgress(Kind kind, int durationSeconds, std::uint64_t elapsedMs, con
 
 const char* kindName(Kind kind) {
     switch (kind) {
-        case Kind::Cpu: return "CPU Verify Stress";
-        case Kind::Ram: return "RAM Pattern / Mismatch Test";
-        case Kind::Combined: return "Combined CPU + RAM Stress";
+        case Kind::Cpu: return "Stress-NX Matrixprod + Hanoi Verify";
+        case Kind::Ram: return "memtester v4 CPU Memory Test";
+        case Kind::Combined: return "Matrixprod + memtester Combined Stress";
         case Kind::Gpu: return "GPU Compute / Memory Stress";
     }
     return "Unknown Test";
@@ -433,15 +433,12 @@ Result run(Kind kind, int durationSeconds) {
 
     std::vector<std::thread> workers;
     if (kind == Kind::Cpu) {
-        workers.emplace_back(cpuWorker, std::ref(c), 0u);
-        workers.emplace_back(cpuWorker, std::ref(c), 1u);
-        workers.emplace_back(cpuWorker, std::ref(c), 2u);
+        workers.emplace_back(cpuWorker, std::ref(c));
     } else if (kind == Kind::Ram) {
-        workers.emplace_back(ramWorker, std::ref(c));
+        workers.emplace_back(ramWorker, std::ref(c), 0);
     } else if (kind == Kind::Combined) {
-        workers.emplace_back(cpuWorker, std::ref(c), 0u);
-        workers.emplace_back(cpuWorker, std::ref(c), 1u);
-        workers.emplace_back(ramWorker, std::ref(c));
+        workers.emplace_back(cpuWorker, std::ref(c));
+        workers.emplace_back(ramWorker, std::ref(c), 1);
     } else if (kind == Kind::Gpu) {
         workers.emplace_back(gpuWorker, std::ref(c));
     }
@@ -484,11 +481,14 @@ Result run(Kind kind, int durationSeconds) {
     }
 
     c.stop.store(true, std::memory_order_release);
-    for (auto& t : workers) if (t.joinable()) t.join();
+    for (auto& t : workers)
+        if (t.joinable()) t.join();
 
     const auto finish = Clock::now();
     out.elapsedMs = std::uint64_t(std::chrono::duration_cast<std::chrono::milliseconds>(finish - start).count());
-    out.iterations = c.iterations.load(std::memory_order_relaxed);
+    out.iterations = c.cpuIterations.load(std::memory_order_relaxed)
+                   + c.ramLoops.load(std::memory_order_relaxed)
+                   + c.gpuIterations.load(std::memory_order_relaxed);
     out.errors = c.errors.load(std::memory_order_relaxed);
     out.mismatches = c.mismatches.load(std::memory_order_relaxed);
 
@@ -502,15 +502,28 @@ Result run(Kind kind, int durationSeconds) {
         out.detail = buf;
     } else if (c.failed.load(std::memory_order_acquire) || out.errors || out.mismatches) {
         out.outcome = Outcome::Fail;
-        if (out.mismatches) {
-            char buf[192];
-            std::snprintf(buf, sizeof(buf), "Mismatch at index %llu: expected 0x%016llX, got 0x%016llX",
-                (unsigned long long)c.mismatchIndex.load(),
-                (unsigned long long)c.expected.load(),
-                (unsigned long long)c.actual.load());
-            out.detail = buf;
-        } else {
-            out.detail = "The test engine detected an execution/GPU error.";
+        switch (c.failureKind.load(std::memory_order_relaxed)) {
+            case FailureCpuVerify:
+                out.detail = "CPU Hanoi verification mismatch detected during Matrixprod stress.";
+                break;
+            case FailureMemtester:
+                out.detail = "memtester detected one or more RAM mismatches.";
+                break;
+            case FailureGpuMismatch: {
+                char buf[192];
+                std::snprintf(buf, sizeof(buf), "GPU mismatch at index %llu: expected 0x%016llX, got 0x%016llX",
+                    (unsigned long long)c.mismatchIndex.load(),
+                    (unsigned long long)c.expected.load(),
+                    (unsigned long long)c.actual.load());
+                out.detail = buf;
+                break;
+            }
+            case FailureGpuQueue:
+                out.detail = "The deko3d GPU queue entered an error state.";
+                break;
+            default:
+                out.detail = "The stability engine detected an error.";
+                break;
         }
     } else {
         out.outcome = Outcome::Pass;

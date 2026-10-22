@@ -18,7 +18,7 @@ ROMFS       := romfs
 
 APP_TITLE   := HOC Undervolting Wizard
 APP_AUTHOR  := Retrotendo / Community
-APP_VERSION := 0.3.0
+APP_VERSION := 0.4.0
 
 ARCH        := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 CFLAGS      := -g -Wall -O2 -ffunction-sections $(ARCH) $(DEFINES)
@@ -27,7 +27,6 @@ CXXFLAGS    := $(CFLAGS) -fno-rtti -fno-exceptions -std=gnu++17
 ASFLAGS     := -g $(ARCH)
 LDFLAGS     = -specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 
-# Match the official devkitPro deko3d examples: debug deko3d + libnx.
 LIBS        := -ldeko3dd -lnx
 LIBDIRS     := $(PORTLIBS) $(LIBNX)
 

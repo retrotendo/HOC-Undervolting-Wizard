@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <thread>
 #include <vector>
 
@@ -215,7 +216,8 @@ bool loadComputeShader(DkDevice device, DkShader* outShader, DkMemBlock* outCode
         return false;
     }
 
-    const std::uint32_t blockSize = (hdr.codeSize + DK_SHADER_CODE_ALIGNMENT - 1u) & ~(DK_SHADER_CODE_ALIGNMENT - 1u);
+    const std::uint32_t required = hdr.codeSize + DK_SHADER_CODE_UNUSABLE_SIZE;
+    const std::uint32_t blockSize = (required + DK_MEMBLOCK_ALIGNMENT - 1u) & ~(DK_MEMBLOCK_ALIGNMENT - 1u);
     DkMemBlockMaker mm;
     dkMemBlockMakerDefaults(&mm, device, blockSize);
     mm.flags = DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached | DkMemBlockFlags_Code;
@@ -246,7 +248,7 @@ bool loadComputeShader(DkDevice device, DkShader* outShader, DkMemBlock* outCode
 }
 
 void gpuWorker(Context& c) {
-    Result rcRom = romfsInit();
+    ::Result rcRom = romfsInit();
     if (R_FAILED(rcRom)) {
         c.initError.store(10, std::memory_order_release);
         c.stop.store(true, std::memory_order_release);
@@ -451,7 +453,12 @@ Result run(Kind kind, int durationSeconds) {
     auto lastDraw = start - std::chrono::seconds(1);
     bool cancelled = false;
 
-    while (appletMainLoop()) {
+    while (true) {
+        if (!appletMainLoop()) {
+            cancelled = true;
+            break;
+        }
+
         const auto now = Clock::now();
         const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
 

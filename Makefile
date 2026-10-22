@@ -14,10 +14,11 @@ BUILD       := build
 SOURCES     := source
 DATA        := data
 INCLUDES    := include
+ROMFS       := romfs
 
 APP_TITLE   := HOC Undervolting Wizard
 APP_AUTHOR  := Retrotendo / Community
-APP_VERSION := 0.2.0
+APP_VERSION := 0.3.0
 
 ARCH        := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 CFLAGS      := -g -Wall -O2 -ffunction-sections $(ARCH) $(DEFINES)
@@ -26,7 +27,8 @@ CXXFLAGS    := $(CFLAGS) -fno-rtti -fno-exceptions -std=gnu++17
 ASFLAGS     := -g $(ARCH)
 LDFLAGS     = -specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 
-LIBS        := -lnx
+# Match the official devkitPro deko3d examples: debug deko3d + libnx.
+LIBS        := -ldeko3dd -lnx
 LIBDIRS     := $(PORTLIBS) $(LIBNX)
 
 ifneq ($(BUILD),$(notdir $(CURDIR)))
@@ -39,6 +41,8 @@ export DEPSDIR := $(CURDIR)/$(BUILD)
 ifneq ($(strip $(APP_TITLE)),)
 export NROFLAGS += --nacp=$(CURDIR)/$(TARGET).nacp
 endif
+export NROFLAGS += --romfsdir=$(CURDIR)/$(ROMFS)
+
 CFILES   := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
 CPPFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
 SFILES   := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
@@ -54,14 +58,26 @@ export INCLUDE := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
                   -I$(CURDIR)/$(BUILD)
 export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 
+ROMFS_SHADERS := $(ROMFS)/shaders
+GPU_SHADER := $(ROMFS_SHADERS)/gpu_stress.dksh
+
 .PHONY: all clean $(BUILD)
-all: $(BUILD)
-$(BUILD):
-	@[ -d $@ ] || mkdir -p $@
+all: $(GPU_SHADER) $(BUILD)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
+
+$(BUILD):
+	@mkdir -p $@
+
+$(ROMFS_SHADERS):
+	@mkdir -p $@
+
+$(GPU_SHADER): source/gpu_stress.glsl | $(ROMFS_SHADERS)
+	@echo "{comp} gpu_stress.glsl"
+	@uam -s comp -o $@ $<
+
 clean:
 	@echo clean ...
-	@rm -fr $(BUILD) $(TARGET).nro $(TARGET).nacp $(TARGET).elf
+	@rm -fr $(BUILD) $(ROMFS) $(TARGET).nro $(TARGET).nacp $(TARGET).elf
 else
 DEPENDS := $(OFILES:.o=.d)
 ifneq ($(strip $(APP_TITLE)),)

@@ -9,15 +9,15 @@ endif
 TOPDIR ?= $(CURDIR)
 include $(DEVKITPRO)/libnx/switch_rules
 
-TARGET      := HOC-Battery-Wizard
+TARGET      := HOC-Undervolting-Wizard
 BUILD       := build
 SOURCES     := source
 DATA        := data
 INCLUDES    := include
 
-APP_TITLE   := HOC Battery Wizard
+APP_TITLE   := HOC Undervolting Wizard
 APP_AUTHOR  := Retrotendo / Community
-APP_VERSION := 0.1.0
+APP_VERSION := 0.2.0
 
 ARCH        := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 CFLAGS      := -g -Wall -O2 -ffunction-sections $(ARCH) $(DEFINES)

@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.4.0-beta.3
+
+- Changed CPU Low VMIN hard floor from 550 mV to **570 mV**.
+- Moved Low VMIN quick search to **612 / 384 / 1331.2 MHz** so the floor is exercised directly.
+- Added sequential 1-hour Low VMIN validation at **612 -> 816 -> 1020 MHz**.
+- CPU/GPU/RAM Temporary Overrides are verified before every one of those validation runs.
+- Any failure in the three-stage VMIN validation raises Low VMIN by **5 mV** and restarts validation at 612 MHz.
+- Existing beta.2 state files are clamped to the new 570 mV minimum on load.
+
 ## v0.4.0-beta.2
 
 - Added the full Battery-guide starting setup to the Wizard preparation screen.

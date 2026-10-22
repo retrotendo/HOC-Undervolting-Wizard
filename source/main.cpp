@@ -28,7 +28,8 @@ constexpr int STOCK_VDD2_UV = 1175000;
 
 // Horizon OC temporary-override targets used by the Battery guide.
 constexpr u32 CLOCK_CPU_NORMAL_HZ = 1020000000U;
-constexpr u32 CLOCK_CPU_LOW_HZ    = 510000000U;
+constexpr u32 CLOCK_CPU_LOW_HZ    = 612000000U;
+constexpr u32 CLOCK_CPU_VMIN_MID_HZ = 816000000U;
 constexpr u32 CLOCK_CPU_BOOST_HZ  = 1785000000U;
 constexpr u32 CLOCK_GPU_NORMAL_HZ = 384000000U;
 constexpr u32 CLOCK_GPU_BOOST_HZ  = 76800000U;
@@ -37,7 +38,7 @@ constexpr u32 CLOCK_RAM_BOOST_HZ  = 1600000000U;
 
 constexpr int LOW_UV_MAX = 8;
 constexpr int HIGH_UV_MAX = 13;
-constexpr int LOW_VMIN_MIN_MV = 550;
+constexpr int LOW_VMIN_MIN_MV = 570;
 constexpr int VDDQ_MIN_MV = 400;
 constexpr int VDD2_MIN_UV = 912500;
 constexpr int LOW_VMIN_STEP_MV = 5;
@@ -65,7 +66,10 @@ enum class Stage : int {
     BoostMemValidate,
     BoostCpuMemValidate,
     RealWorldValidate,
-    Complete
+    Complete,
+    // Appended to preserve all existing beta.2 stage numbers in state.ini.
+    LowVminValidate816,
+    LowVminValidate1020
 };
 
 struct WizardState {
@@ -133,8 +137,10 @@ const char* stageName(Stage s) {
         case Stage::Preparation: return "Preparation";
         case Stage::LowUvQuick: return "CPU Low UV - Quick Search";
         case Stage::LowUvLong: return "CPU Low UV - 1 Hour Validation";
-        case Stage::LowVminQuick: return "CPU Low VMIN - Quick Search";
-        case Stage::LowVminLong: return "CPU Low VMIN - 1 Hour Validation";
+        case Stage::LowVminQuick: return "CPU Low VMIN - Quick Search @ 612";
+        case Stage::LowVminLong: return "CPU Low VMIN - Validation 1/3 @ 612";
+        case Stage::LowVminValidate816: return "CPU Low VMIN - Validation 2/3 @ 816";
+        case Stage::LowVminValidate1020: return "CPU Low VMIN - Validation 3/3 @ 1020";
         case Stage::VddqQuick: return "VDDQ - Quick Search";
         case Stage::VddqLong: return "VDDQ - 1 Hour Validation";
         case Stage::Vdd2Quick: return "VDD2 - Quick Search";
@@ -169,6 +175,8 @@ bool testPlan(Stage s, stress::Kind& kind, int& seconds) {
             kind = stress::Kind::Cpu; seconds = 60; return true;
         case Stage::LowUvLong:
         case Stage::LowVminLong:
+        case Stage::LowVminValidate816:
+        case Stage::LowVminValidate1020:
         case Stage::HighUvLong:
         case Stage::NormalMatrixValidate:
         case Stage::BoostMatrixValidate:
@@ -196,7 +204,7 @@ bool overridePlan(Stage s, OverrideExpectation& e) {
     switch (s) {
         case Stage::LowUvQuick:
         case Stage::LowUvLong:
-        case Stage::LowVminQuick:
+        case Stage::LowVminValidate1020:
         case Stage::Ram1331Validate:
         case Stage::NormalMatrixValidate:
         case Stage::NormalMemValidate:
@@ -204,8 +212,13 @@ bool overridePlan(Stage s, OverrideExpectation& e) {
             e = {CLOCK_CPU_NORMAL_HZ, CLOCK_GPU_NORMAL_HZ, CLOCK_RAM_NORMAL_HZ};
             return true;
 
+        case Stage::LowVminQuick:
         case Stage::LowVminLong:
             e = {CLOCK_CPU_LOW_HZ, CLOCK_GPU_NORMAL_HZ, CLOCK_RAM_NORMAL_HZ};
+            return true;
+
+        case Stage::LowVminValidate816:
+            e = {CLOCK_CPU_VMIN_MID_HZ, CLOCK_GPU_NORMAL_HZ, CLOCK_RAM_NORMAL_HZ};
             return true;
 
         case Stage::VddqQuick:
@@ -335,6 +348,8 @@ bool loadState() {
         const auto p = line.find('=');
         if (p != std::string::npos) assignKV(line.substr(0, p), line.substr(p + 1));
     }
+    if (g.lowVminGood < LOW_VMIN_MIN_MV) g.lowVminGood = LOW_VMIN_MIN_MV;
+    if (g.lowVminTest < LOW_VMIN_MIN_MV) g.lowVminTest = LOW_VMIN_MIN_MV;
     return true;
 }
 
@@ -424,14 +439,25 @@ void renderTestStage() {
         case Stage::LowVminQuick:
             std::printf("Keep CPU Low UV = %d.\n", g.lowUvGood);
             std::printf("Set CPU Low VMIN = \x1b[1m%d mV\x1b[0m, Save KIP and reboot.\n", g.lowVminTest);
-            if (g.lowVminTest < 590) std::printf("\x1b[33mNote: HOC recommends >=590 mV.\x1b[0m\n");
-            std::printf("Overrides: CPU 1020 / GPU 384 / RAM 1331\n");
+            if (g.lowVminTest < 590) std::printf("\x1b[33mAdvanced low-VMIN range. Wizard floor: 570 mV.\x1b[0m\n");
+            std::printf("Quick-search Overrides: CPU 612 / GPU 384 / RAM 1331\n");
             break;
         case Stage::LowVminLong:
             if (g.recoveryNeeded) printSafeRecovery("CPU Low VMIN = " + std::to_string(g.lowVminGood) + " mV");
-            else std::printf("Restore CPU Low VMIN = \x1b[1m%d mV\x1b[0m, Save KIP and reboot.\n", g.lowVminGood);
-            std::printf("Overrides: CPU 510 / GPU 384 / RAM 1331\n");
-            std::printf("After validation also check normal Sleep/Wake transitions.\n");
+            else std::printf("Use CPU Low VMIN = \x1b[1m%d mV\x1b[0m, Save KIP and reboot.\n", g.lowVminGood);
+            std::printf("Final VMIN validation 1/3.\n");
+            std::printf("Overrides: CPU 612 / GPU 384 / RAM 1331\n");
+            break;
+        case Stage::LowVminValidate816:
+            std::printf("Keep CPU Low VMIN = \x1b[1m%d mV\x1b[0m.\n", g.lowVminGood);
+            std::printf("Final VMIN validation 2/3. No KIP change required.\n");
+            std::printf("Overrides: CPU 816 / GPU 384 / RAM 1331\n");
+            break;
+        case Stage::LowVminValidate1020:
+            std::printf("Keep CPU Low VMIN = \x1b[1m%d mV\x1b[0m.\n", g.lowVminGood);
+            std::printf("Final VMIN validation 3/3. No KIP change required.\n");
+            std::printf("Overrides: CPU 1020 / GPU 384 / RAM 1331\n");
+            std::printf("After PASS also check normal Sleep/Wake transitions.\n");
             break;
         case Stage::VddqQuick:
             std::printf("Keep VDD2 at stock %s.\n", formatVdd2(STOCK_VDD2_UV).c_str());
@@ -633,7 +659,11 @@ void handlePass() {
             if (g.lowVminTest <= LOW_VMIN_MIN_MV) { enterLowVminLong(false); return; }
             g.lowVminTest -= LOW_VMIN_STEP_MV; break;
         case Stage::LowVminLong:
-            g.recoveryNeeded = false; g.stage = Stage::VddqQuick;
+            g.recoveryNeeded = false; g.stage = Stage::LowVminValidate816; break;
+        case Stage::LowVminValidate816:
+            g.stage = Stage::LowVminValidate1020; break;
+        case Stage::LowVminValidate1020:
+            g.stage = Stage::VddqQuick;
             g.vddqTest = STOCK_VDDQ_MV - VDDQ_STEP_MV; break;
         case Stage::VddqQuick:
             g.vddqGood = g.vddqTest;
@@ -671,7 +701,13 @@ void handleFail(bool didNotBoot) {
         case Stage::LowUvQuick: enterLowUvLong(didNotBoot); return;
         case Stage::LowUvLong: if (g.lowUvGood > 0) --g.lowUvGood; g.recoveryNeeded = false; break;
         case Stage::LowVminQuick: enterLowVminLong(didNotBoot); return;
-        case Stage::LowVminLong: g.lowVminGood += LOW_VMIN_STEP_MV; g.recoveryNeeded = false; break;
+        case Stage::LowVminLong:
+        case Stage::LowVminValidate816:
+        case Stage::LowVminValidate1020:
+            if (g.lowVminGood < STOCK_LOW_VMIN_MV) g.lowVminGood += LOW_VMIN_STEP_MV;
+            g.recoveryNeeded = false;
+            g.stage = Stage::LowVminLong;
+            break;
         case Stage::VddqQuick: enterVddqLong(didNotBoot); return;
         case Stage::VddqLong: g.vddqGood += VDDQ_STEP_MV; g.recoveryNeeded = false; break;
         case Stage::Vdd2Quick: enterVdd2Long(didNotBoot); return;
@@ -762,7 +798,7 @@ int main() {
         if (g_interruptedPrompt) {
             if (k & HidNpadButton_A) {
                 g.testRunning = false;
-                if (g.testStage >= 0 && g.testStage <= static_cast<int>(Stage::Complete))
+                if (g.testStage >= 0 && g.testStage <= static_cast<int>(Stage::LowVminValidate1020))
                     g.stage = static_cast<Stage>(g.testStage);
                 g.testKind = g.testDurationSec = g.testStage = 0;
                 saveState();
@@ -771,7 +807,7 @@ int main() {
                 redraw = true;
             } else if (k & HidNpadButton_X) {
                 g.testRunning = false;
-                if (g.testStage >= 0 && g.testStage <= static_cast<int>(Stage::Complete))
+                if (g.testStage >= 0 && g.testStage <= static_cast<int>(Stage::LowVminValidate1020))
                     g.stage = static_cast<Stage>(g.testStage);
                 g.testKind = g.testDurationSec = g.testStage = 0;
                 saveState();

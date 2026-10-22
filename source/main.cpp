@@ -1,6 +1,7 @@
 #include <switch.h>
 
 #include "stress_tests.hpp"
+#include "hoc_monitor.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -24,6 +25,15 @@ constexpr int STOCK_LOW_VMIN_MV = 620;
 constexpr int STOCK_HIGH_VMIN_MV = 750;
 constexpr int STOCK_VDDQ_MV = 600;
 constexpr int STOCK_VDD2_UV = 1175000;
+
+// Horizon OC temporary-override targets used by the Battery guide.
+constexpr u32 CLOCK_CPU_NORMAL_HZ = 1020000000U;
+constexpr u32 CLOCK_CPU_LOW_HZ    = 510000000U;
+constexpr u32 CLOCK_CPU_BOOST_HZ  = 1785000000U;
+constexpr u32 CLOCK_GPU_NORMAL_HZ = 384000000U;
+constexpr u32 CLOCK_GPU_BOOST_HZ  = 76800000U;
+constexpr u32 CLOCK_RAM_NORMAL_HZ = 1331200000U;
+constexpr u32 CLOCK_RAM_BOOST_HZ  = 1600000000U;
 
 constexpr int LOW_UV_MAX = 8;
 constexpr int HIGH_UV_MAX = 13;
@@ -88,6 +98,25 @@ bool g_resultScreen = false;
 stress::Result g_lastResult;
 stress::Kind g_lastKind = stress::Kind::Cpu;
 std::string g_resultAction;
+
+struct OverrideExpectation {
+    u32 cpuHz = 0;
+    u32 gpuHz = 0;
+    u32 ramHz = 0;
+};
+
+struct OverrideCheckState {
+    bool readOk = false;
+    Result rc = 0;
+    OverrideExpectation expected;
+    HocMonClocks current{};
+    bool cpuOk = false;
+    bool gpuOk = false;
+    bool ramOk = false;
+};
+
+bool g_overridePrompt = false;
+OverrideCheckState g_overrideCheck;
 
 std::string formatVdd2(int uv) {
     const int whole = uv / 1000;
@@ -161,6 +190,73 @@ bool testPlan(Stage s, stress::Kind& kind, int& seconds) {
         default:
             return false;
     }
+}
+
+bool overridePlan(Stage s, OverrideExpectation& e) {
+    switch (s) {
+        case Stage::LowUvQuick:
+        case Stage::LowUvLong:
+        case Stage::LowVminQuick:
+        case Stage::Ram1331Validate:
+        case Stage::NormalMatrixValidate:
+        case Stage::NormalMemValidate:
+        case Stage::NormalGpuValidate:
+            e = {CLOCK_CPU_NORMAL_HZ, CLOCK_GPU_NORMAL_HZ, CLOCK_RAM_NORMAL_HZ};
+            return true;
+
+        case Stage::LowVminLong:
+            e = {CLOCK_CPU_LOW_HZ, CLOCK_GPU_NORMAL_HZ, CLOCK_RAM_NORMAL_HZ};
+            return true;
+
+        case Stage::VddqQuick:
+        case Stage::VddqLong:
+        case Stage::Vdd2Quick:
+        case Stage::Vdd2Long:
+        case Stage::HighUvQuick:
+        case Stage::HighUvLong:
+        case Stage::BoostCpuRamValidate:
+        case Stage::BoostMatrixValidate:
+        case Stage::BoostMemValidate:
+        case Stage::BoostCpuMemValidate:
+            e = {CLOCK_CPU_BOOST_HZ, CLOCK_GPU_BOOST_HZ, CLOCK_RAM_BOOST_HZ};
+            return true;
+
+        default:
+            return false;
+    }
+}
+
+bool clockMatches(u32 current, u32 expected) {
+    if (current == 0 || expected == 0) return false;
+    const u32 tolerance = 2000000U; // tolerate display/list rounding such as 1331 vs 1331.2 MHz
+    return current > expected ? (current - expected <= tolerance) : (expected - current <= tolerance);
+}
+
+std::string formatClock(u32 hz) {
+    if (hz == 0) return "NOT SET";
+    char buf[32];
+    if (hz % 1000000U == 0)
+        std::snprintf(buf, sizeof(buf), "%u MHz", hz / 1000000U);
+    else
+        std::snprintf(buf, sizeof(buf), "%.1f MHz", (double)hz / 1000000.0);
+    return std::string(buf);
+}
+
+bool checkAllOverrides(Stage s) {
+    g_overrideCheck = OverrideCheckState{};
+    if (!overridePlan(s, g_overrideCheck.expected)) return true;
+
+    g_overrideCheck.rc = hocmonGetClocks(&g_overrideCheck.current);
+    if (R_FAILED(g_overrideCheck.rc)) {
+        g_overrideCheck.readOk = false;
+        return false;
+    }
+
+    g_overrideCheck.readOk = true;
+    g_overrideCheck.cpuOk = clockMatches(g_overrideCheck.current.overrideHz[0], g_overrideCheck.expected.cpuHz);
+    g_overrideCheck.gpuOk = clockMatches(g_overrideCheck.current.overrideHz[1], g_overrideCheck.expected.gpuHz);
+    g_overrideCheck.ramOk = clockMatches(g_overrideCheck.current.overrideHz[2], g_overrideCheck.expected.ramHz);
+    return g_overrideCheck.cpuOk && g_overrideCheck.gpuOk && g_overrideCheck.ramOk;
 }
 
 void ensureDir() {
@@ -286,20 +382,26 @@ void footerTest() {
 
 void renderPreparation() {
     title();
-    std::printf("This app does NOT write Horizon OC settings.\n");
-    std::printf("You still set each HOC value manually and Save KIP.\n");
-    std::printf("v0.3 runs CPU, RAM, combined and GPU tests internally.\n\n");
-    std::printf("Start from:\n");
-    std::printf("  CPU UV Table  : Default / Normal (NOT Extreme)\n");
-    std::printf("  CPU Low UV    : 0\n");
-    std::printf("  CPU High UV   : 0\n");
-    std::printf("  CPU Low VMIN  : %d mV\n", STOCK_LOW_VMIN_MV);
-    std::printf("  CPU High VMIN : %d mV\n", STOCK_HIGH_VMIN_MV);
-    std::printf("  RAM VDDQ      : %d mV\n", STOCK_VDDQ_MV);
-    std::printf("  RAM VDD2      : %s\n\n", formatVdd2(STOCK_VDD2_UV).c_str());
-    std::printf("Set these values, Save KIP and reboot once.\n");
-    std::printf("Then reopen the wizard and press [A].\n\n");
-    std::printf("[A] Start tuning   [B] Exit   [-] Reset\n");
+    std::printf("Before tuning, prepare the Battery profile exactly once.\n\n");
+    std::printf("HOC Toolkit / stock clock limits:\n");
+    std::printf("  CPU Max Clock   : 1785 MHz\n");
+    std::printf("  CPU Boost Clock : 1785 MHz\n");
+    std::printf("  GPU Max Clock   : 384 MHz\n");
+    std::printf("  RAM Max Clock   : 1600 MHz\n\n");
+    std::printf("Horizon OC:\n");
+    std::printf("  Safety -> Uncapped Clocks : OFF\n");
+    std::printf("  RAM -> HP Mode             : OFF\n");
+    std::printf("  RAM Max Clock              : 1600 MHz\n");
+    std::printf("  Overwrite Boost Mode       : OFF\n");
+    std::printf("  Auto CPU RAM OC            : OFF\n");
+    std::printf("  CPU UV Table               : Normal\n");
+    std::printf("  Low UV / High UV           : 0 / 0\n");
+    std::printf("  Low VMIN / High VMIN       : %d / %d mV\n", STOCK_LOW_VMIN_MV, STOCK_HIGH_VMIN_MV);
+    std::printf("  RAM VDD2 / VDDQ            : %s / %d mV\n", formatVdd2(STOCK_VDD2_UV).c_str(), STOCK_VDDQ_MV);
+    std::printf("  Per-game CPU/GPU/RAM       : STOCK / default\n\n");
+    std::printf("Save/apply the Toolkit values, Save KIP, then REBOOT CFW.\n");
+    std::printf("After reboot reopen this Wizard and press [A].\n\n");
+    std::printf("[A] Setup done - start tuning   [B] Exit   [-] Reset\n");
 }
 
 void renderTestStage() {
@@ -389,6 +491,7 @@ void renderTestStage() {
     std::printf("\nBuilt-in test: \x1b[1m%s\x1b[0m\n", stress::kindName(kind));
     std::printf("Duration: \x1b[1m%s\x1b[0m\n", seconds == 60 ? "1 minute" : "1 hour");
     std::printf("Errors/mismatches are detected automatically.\n");
+    std::printf("CPU + GPU + RAM Overrides are verified before EVERY test.\n");
     if (kind == stress::Kind::Ram || kind == stress::Kind::Combined)
         std::printf("Do not install/update/copy files while testing unstable RAM.\n");
     footerTest();
@@ -432,6 +535,40 @@ void renderInterruptedPrompt() {
     consoleUpdate(nullptr);
 }
 
+void renderOverridePrompt() {
+    consoleClear();
+    std::printf("\x1b[1;1H\x1b[31mHOC Undervolting Wizard - TEST BLOCKED\x1b[0m\n");
+    std::printf("------------------------------------------------------------\n\n");
+
+    if (!g_overrideCheck.readOk) {
+        std::printf("Could not read Horizon OC service 'hoc:clk'.\n");
+        std::printf("Result: 0x%08X\n\n", g_overrideCheck.rc);
+        std::printf("Boot normal CFW with Horizon OC / hoc.kip loaded, then retry.\n");
+    } else {
+        const char* ok = "\x1b[32mOK\x1b[0m";
+        const char* bad = "\x1b[31mWRONG\x1b[0m";
+        std::printf("All three Temporary Overrides must match the test target.\n\n");
+        std::printf("       Expected       Current        Status\n");
+        std::printf("CPU    %-13s  %-13s  %s\n",
+                    formatClock(g_overrideCheck.expected.cpuHz).c_str(),
+                    formatClock(g_overrideCheck.current.overrideHz[0]).c_str(),
+                    g_overrideCheck.cpuOk ? ok : bad);
+        std::printf("GPU    %-13s  %-13s  %s\n",
+                    formatClock(g_overrideCheck.expected.gpuHz).c_str(),
+                    formatClock(g_overrideCheck.current.overrideHz[1]).c_str(),
+                    g_overrideCheck.gpuOk ? ok : bad);
+        std::printf("RAM    %-13s  %-13s  %s\n\n",
+                    formatClock(g_overrideCheck.expected.ramHz).c_str(),
+                    formatClock(g_overrideCheck.current.overrideHz[2]).c_str(),
+                    g_overrideCheck.ramOk ? ok : bad);
+        std::printf("Open Horizon OC -> Temporary Overrides and correct ALL red values.\n");
+    }
+
+    std::printf("\nThe stability test has NOT started and no result was recorded.\n\n");
+    std::printf("[A] Check again + start when correct   [B] Back\n");
+    consoleUpdate(nullptr);
+}
+
 void renderResultScreen() {
     consoleClear();
     std::printf("\x1b[1;1H\x1b[36mHOC Undervolting Wizard\x1b[0m\n");
@@ -459,6 +596,7 @@ void renderResultScreen() {
 void render() {
     consoleClear();
     if (g_interruptedPrompt) { renderInterruptedPrompt(); return; }
+    if (g_overridePrompt) { renderOverridePrompt(); return; }
     if (g_resultScreen) { renderResultScreen(); return; }
     if (g_resetConfirm) {
         std::printf("\x1b[1;1H\x1b[31mReset ALL wizard progress?\x1b[0m\n\n");
@@ -559,6 +697,14 @@ void runCurrentTest() {
     int seconds = 0;
     if (!testPlan(g.stage, kind, seconds)) return;
 
+    // Hard pre-flight: every built-in test requires all three expected
+    // Horizon OC Temporary Overrides. A missing/wrong override blocks the test.
+    if (!checkAllOverrides(g.stage)) {
+        g_overridePrompt = true;
+        return;
+    }
+    g_overridePrompt = false;
+
     const Stage testedStage = g.stage;
     g.testRunning = true;
     g.testKind = static_cast<int>(kind);
@@ -633,6 +779,19 @@ int main() {
                 redraw = true;
             } else if (k & HidNpadButton_B) {
                 break;
+            }
+            svcSleepThread(20'000'000);
+            continue;
+        }
+
+        if (g_overridePrompt) {
+            if (k & HidNpadButton_A) {
+                g_overridePrompt = false;
+                runCurrentTest();
+                redraw = true;
+            } else if (k & HidNpadButton_B) {
+                g_overridePrompt = false;
+                redraw = true;
             }
             svcSleepThread(20'000'000);
             continue;

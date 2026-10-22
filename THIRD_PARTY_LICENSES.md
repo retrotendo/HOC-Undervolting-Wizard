@@ -167,3 +167,7 @@ Copyright 2017-2018 libnx Authors
 When distributing an `.nro` built from this branch, the corresponding source code must remain available under GPL-2.0-only. Publishing the NRO from the same public GitHub repository as its complete buildable source is the intended distribution method for this project.
 
 The in-app test screen also identifies the active upstream test engine and displays the GPL/no-warranty notice.
+
+### Horizon OC live-context IPC used by override pre-flight
+
+`source/hoc_monitor.c` uses the public `hoc:clk` `GetCurrentContext` IPC command and the stable context layout documented by Horizon-OC to read CPU/GPU/RAM Temporary Overrides before a test. The implementation is a reduced read-only adaptation of Horizon-OC's GPLv2 client/context definitions. No Horizon OC configuration is written by this code.

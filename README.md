@@ -38,6 +38,8 @@ Built-in tests now include:
 
 Quick boundary tests run for **1 minute** and long validation tests run for **1 hour**, with an on-screen timer, progress information and automatic PASS/FAIL handling.
 
+Before **every built-in test**, the Wizard reads Horizon OC's live `hoc:clk` context and verifies **all three Temporary Overrides (CPU + GPU + RAM)**. A missing or incorrect override blocks the test and shows Expected vs Current values; no tuning result is recorded until all three match.
+
 The final real-world gameplay validation remains manual because a game cannot run in the foreground at the same time as the Wizard.
 
 ## Crash / reboot detection
@@ -134,6 +136,20 @@ If a value does not boot:
 6. Open Horizon OC, restore that value and **Save KIP**.
 7. Reboot normally.
 8. Run the required 1-hour built-in validation.
+
+---
+
+# Battery starting setup
+
+Before Step 1, prepare the Battery profile once:
+
+- HOC Toolkit / stock clock limits: **CPU Max 1785 MHz**, **CPU Boost 1785 MHz**, **GPU Max 384 MHz**, **RAM Max 1600 MHz**.
+- Horizon OC: **Uncapped Clocks OFF**, **HP Mode OFF**, **RAM Max Clock 1600 MHz**, **Overwrite Boost Mode OFF**, **Auto CPU RAM OC OFF**.
+- CPU baseline: **UV Table Normal**, **Low UV 0**, **High UV 0**, **Low VMIN 620 mV**, **High VMIN 750 mV**.
+- RAM baseline: **VDD2 1175 mV**, **VDDQ 600 mV**.
+- Per-game CPU/GPU/RAM clocks: **stock/default**.
+
+Save/apply the Toolkit values, **Save KIP**, then **reboot CFW** before starting the tuning sequence. These are starting limits/baselines, not the final undervolted values the Wizard will discover.
 
 ---
 

@@ -185,7 +185,9 @@ You can still press **X — Manual FAIL** if you see instability that the built-
 9. Final Nintendo Boost CPU/RAM tests
 10. One-hour real-world gameplay validation
 
-Quick searches run for **1 minute**. At the first failure, the previous working value becomes the candidate for a **1-hour validation**. If the long validation fails, the Wizard moves one step safer and repeats the validation.
+Quick searches run for **1 minute**. At the first failure, the previous working value becomes the candidate for long validation. If a long validation fails, the Wizard moves one step safer and repeats the validation.
+
+For **CPU Low VMIN**, the quick search is intentionally run at **612 / 384 / 1331.2 MHz** so the voltage floor is actually exercised. The selected VMIN is then validated for **1 hour each at CPU 612 -> 816 -> 1020 MHz** (GPU 384 / RAM 1331.2 throughout). Any failure makes VMIN **+5 mV safer** and restarts the three-stage validation at 612 MHz. The Wizard never searches below **570 mV**.
 
 ---
 
@@ -196,7 +198,7 @@ Current Mariko/OLED workflow:
 - CPU UV Table: Default / Normal — not Extreme
 - CPU Low UV: 0
 - CPU High UV: 0
-- CPU Low VMIN: 620 mV
+- CPU Low VMIN: 620 mV baseline; Wizard searches downward in 5 mV steps to a hard floor of **570 mV**
 - CPU High VMIN: 750 mV
 - RAM VDDQ: 600 mV
 - RAM VDD2: 1175 mV
@@ -205,7 +207,7 @@ Search increments:
 
 - CPU Low UV: +1 level
 - CPU High UV: +1 level
-- CPU Low VMIN: -5 mV
+- CPU Low VMIN: -5 mV, minimum **570 mV**
 - RAM VDDQ: -5 mV
 - RAM VDD2: -12.5 mV
 

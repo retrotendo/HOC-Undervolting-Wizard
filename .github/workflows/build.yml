@@ -13,6 +13,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Build source compatibility fix
+        run: sed -i 's/    Result rcRom = romfsInit();/    ::Result rcRom = romfsInit();/' source/stress_tests.cpp
+
       - name: Build
         run: make -j2
 

@@ -10,38 +10,52 @@ Use the wizard to find and validate the lowest stable CPU/RAM voltage settings f
 
 The wizard can also be used independently for Horizon OC tuning.
 
-## v0.3 — built-in stability tests
+## v0.4 — established open-source stress-test algorithms built in
 
-The wizard now contains its own timed stability tests. You no longer need to leave the wizard and launch StressNX, MemTester or a separate GPU test for the normal guided workflow.
+v0.4 replaces the experimental purpose-built CPU/RAM test kernels from v0.3 with established GPLv2 test algorithms used in the Switch overclocking community.
 
-Built-in tests include:
+Built-in tests now include:
 
-- **CPU Verify Stress** — multi-threaded deterministic matrix/integer workload with automatic result verification;
-- **RAM Pattern / Mismatch Test** — repeated large-memory write/read patterns with automatic mismatch detection;
-- **Combined CPU + RAM Stress** — CPU verification and RAM pattern testing at the same time;
-- **GPU Compute / Memory Stress** — deko3d compute-shader workload with GPU-buffer verification;
-- **1-minute boundary searches** and **1-hour validation runs** with an on-screen timer and progress display.
+- **CPU — Stress-NX Matrixprod + Hanoi Verify**
+  - Matrixprod workload taken from the GPLv2 CPU stress implementation in Horizon-OC / Benchmark Toolbox;
+  - the original Matrixprod algorithm is left unchanged;
+  - after every Matrixprod pass the original Hanoi verification workload runs, allowing the Wizard to detect CPU calculation errors automatically;
+  - Benchmark Toolbox / the Switch homebrew ecosystem credits Stress-NX to **Lineon**.
 
-A successful timed test is recorded as **PASS automatically**. A detected calculation error, RAM mismatch or GPU execution/verification error is recorded as **FAIL automatically**.
+- **RAM — memtester v4 CPU Memory Test**
+  - established memtester algorithms including Stuck Address, Random Value, XOR/SUB/MUL/DIV, Sequential Increment, Solid Bits, Checkerboard, Bit Spread, Bit Flip, Walking Ones and Walking Zeroes;
+  - memtester credits **Simon Kirby** and **Charles Cazabon**;
+  - Switch runner adapted from the GPLv2 implementation in Horizon-OC / Benchmark Toolbox;
+  - RAM mismatches are detected and reported automatically.
 
-The final real-world gameplay validation remains manual because a game cannot run in the foreground at the same time as the wizard.
+- **Combined — Matrixprod + memtester / bandwidth burn-in**
+  - CPU Matrixprod/Hanoi verification and RAM testing run together to expose failures that only appear under combined load.
+
+- **GPU — deko3d Compute / Memory Stress**
+  - project-original GPU test code using the public deko3d API;
+  - GPU buffer results are checked on the CPU;
+  - GPU queue errors and verification mismatches automatically fail the test.
+
+Quick boundary tests run for **1 minute** and long validation tests run for **1 hour**, with an on-screen timer, progress information and automatic PASS/FAIL handling.
+
+The final real-world gameplay validation remains manual because a game cannot run in the foreground at the same time as the Wizard.
 
 ## Crash / reboot detection
 
-Before every built-in test starts, the wizard saves a persistent `testRunning` marker to the SD card.
+Before every built-in test starts, the Wizard saves a persistent `testRunning` marker to the SD card.
 
-If the console freezes, crashes or reboots during a stress test, the marker remains set. On the next start the wizard asks whether the previous test crashed:
+If the console freezes, crashes or reboots during a stress test, the marker remains set. On the next start the Wizard asks whether the previous test crashed:
 
 - **YES** — count the unfinished test as FAIL and continue with the safer recovery path;
 - **NO** — treat it as a manual interruption and offer the same test again.
 
 Cancelling a running test with **B** does **not** count as FAIL.
 
-## Important: the wizard still does NOT control Horizon OC
+## Important: the Wizard does NOT control Horizon OC
 
 **This app never writes Horizon OC values and never edits `hoc.kip`.**
 
-All UV/voltage changes and test clock overrides are still set manually by the user inside Horizon OC. The wizard only manages the workflow, runs the stability tests, records results, and remembers the last known-good values.
+All UV/voltage changes and test clock overrides are still set manually by the user inside Horizon OC. The Wizard manages the workflow, runs the stability tests, records results, and remembers the last known-good values.
 
 Progress:
 
@@ -64,7 +78,7 @@ Final results:
 
 **Performance Modes is optional**, but HOC Undervolting Wizard was created specifically to help find validated Battery-profile values for it.
 
-For the RAM tests, launching Homebrew Menu through **title takeover / full application mode** is recommended so the wizard has more memory available. The RAM test automatically falls back to a smaller allocation if necessary and displays how much RAM is being tested per pass.
+For RAM testing, launching Homebrew Menu through **title takeover / full application mode** is strongly recommended. The integrated memtester runner maps as much available memory as possible and shows the amount being tested.
 
 ## Install the NRO
 
@@ -94,15 +108,15 @@ No installer is required.
 
 ### Updating from HOC Battery Wizard beta / v0.2
 
-The wizard now uses:
+The Wizard uses:
 
 `/switch/HOC-Undervolting-Wizard/`
 
-If a new `state.ini` does not exist but the old beta state is still present at:
+If a new `state.ini` does not exist but an old beta state is still present at:
 
 `/switch/HOC-Battery-Wizard/state.ini`
 
-v0.3 automatically imports that old state on first start.
+it is automatically imported on first start.
 
 ---
 
@@ -116,7 +130,7 @@ If a value does not boot:
 2. Boot Hekate.
 3. Start the safe CFW entry without `hoc.kip`.
 4. Open HOC Undervolting Wizard and choose **DID NOT BOOT**.
-5. The wizard shows the last known-good value to restore.
+5. The Wizard shows the last known-good value to restore.
 6. Open Horizon OC, restore that value and **Save KIP**.
 7. Reboot normally.
 8. Run the required 1-hour built-in validation.
@@ -125,7 +139,7 @@ If a value does not boot:
 
 # Normal workflow
 
-A typical tuning step is now:
+A typical tuning step is:
 
 1. Open HOC Undervolting Wizard.
 2. Read the next HOC value and required CPU/GPU/RAM override clocks.
@@ -135,8 +149,8 @@ A typical tuning step is now:
 6. Set the requested clock overrides.
 7. Reopen HOC Undervolting Wizard.
 8. Press **A — START BUILT-IN TEST**.
-9. The wizard runs the test, timer and verification automatically.
-10. PASS/FAIL is recorded automatically and the wizard calculates the next step.
+9. The Wizard runs the requested test and timer automatically.
+10. PASS/FAIL is recorded automatically and the Wizard calculates the next step.
 
 You can still press **X — Manual FAIL** if you see instability that the built-in verifier did not catch.
 
@@ -155,7 +169,7 @@ You can still press **X — Manual FAIL** if you see instability that the built-
 9. Final Nintendo Boost CPU/RAM tests
 10. One-hour real-world gameplay validation
 
-Quick searches run for **1 minute**. At the first failure, the previous working value becomes the candidate for a **1-hour validation**. If the long validation fails, the wizard moves one step safer and repeats the validation.
+Quick searches run for **1 minute**. At the first failure, the previous working value becomes the candidate for a **1-hour validation**. If the long validation fails, the Wizard moves one step safer and repeats the validation.
 
 ---
 
@@ -191,7 +205,7 @@ Normal test stages:
 - **X** — manual FAIL
 - **Y** — DID NOT BOOT on quick-search stages
 - **B** — exit; progress is automatically saved
-- **Minus** — reset wizard progress
+- **Minus** — reset Wizard progress
 
 During a built-in stress test:
 
@@ -206,7 +220,7 @@ After a crash/reboot is detected on the next launch:
 
 # Using the results with Performance Modes
 
-After all validation stages pass, the wizard writes:
+After all validation stages pass, the Wizard writes:
 
 `/switch/HOC-Undervolting-Wizard/results.txt`
 
@@ -220,7 +234,30 @@ It contains the final validated values for:
 
 Use these values when preparing/saving the **Battery profile** in Performance Modes.
 
-The wizard intentionally does not transfer the settings automatically. Horizon OC remains the single place where voltage/UV values are changed.
+The Wizard intentionally does not transfer settings automatically. Horizon OC remains the single place where voltage/UV values are changed.
+
+---
+
+# License and source availability
+
+**HOC Undervolting Wizard v0.4 is free software licensed under GNU GPL version 2 only (`GPL-2.0-only`).**
+
+This is required because GPLv2 CPU/RAM test code is incorporated into the same executable.
+
+- Complete project license: [`LICENSE`](LICENSE)
+- Upstream authors, source paths, modification notes and permissive-library notices: [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md)
+
+The built-in test screen also displays the active engine's credits and a GPL/no-warranty notice.
+
+When distributing an NRO, the corresponding complete buildable source must remain available under GPLv2. The intended release model is to publish the NRO and its source from this same repository.
+
+### Important Stress-NX provenance note
+
+The Wizard does **not** copy code from an unidentified or unlicensed standalone Stress-NX repository. The Matrixprod/Hanoi implementation incorporated here is sourced from the **GPLv2 Horizon-OC / Benchmark Toolbox** source tree, which bundles these Stress-NX workloads and credits Stress-NX to Lineon.
+
+### memtester provenance
+
+The memory algorithms are from **memtester v4**, whose upstream project states that the v4 rewrite is Copyright (C) 2004-2020 Charles Cazabon and licensed under **GNU GPL version 2 only**. The Switch runner is adapted from Horizon-OC / Benchmark Toolbox.
 
 ---
 
@@ -253,6 +290,13 @@ During deliberately unstable RAM boundary testing, avoid installing/updating sof
 
 The built-in tests improve automation and repeatability, but they cannot prove absolute stability. Keep the final real-world validation and normal-use transition testing.
 
-## Credits / implementation notes
+## Credits summary
 
-The GPU test uses **deko3d** and the devkitPro **uam** shader tool. The deko3d setup follows the public patterns documented in the switchbrew/devkitPro examples. The wizard's CPU/RAM verification routines are purpose-built for this project; GPL test code from external stress-test projects is not embedded in this MIT-licensed application.
+- **Lineon** — Stress-NX / Matrixprod lineage
+- **Horizon-OC / Benchmark Toolbox contributors** — GPLv2 Switch CPU and memtester implementations used as the integration source
+- **Simon Kirby** — original memtester work
+- **Charles Cazabon** — memtester v2 and v4 rewrite
+- **fincs / devkitPro** — deko3d
+- **switchbrew / libnx authors** — libnx
+
+See `THIRD_PARTY_LICENSES.md` for the full notices.

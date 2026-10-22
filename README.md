@@ -46,8 +46,6 @@ Final results:
 
 `/switch/HOC-Undervolting-Wizard/results.txt`
 
-Older beta progress from `/switch/HOC-Battery-Wizard/state.ini` is automatically imported the first time the renamed app starts.
-
 ---
 
 # Installation
@@ -90,6 +88,18 @@ SD:/
 6. Start **HOC Undervolting Wizard**.
 
 No separate installer is required.
+
+### Updating from the early HOC Battery Wizard beta
+
+The renamed app uses a new folder. If you want to keep an existing beta session, copy:
+
+`/switch/HOC-Battery-Wizard/state.ini`
+
+to:
+
+`/switch/HOC-Undervolting-Wizard/state.ini`
+
+before starting the renamed app for the first time. If you have only been testing the beta and do not need its progress, simply start a new wizard session.
 
 ## Before starting the undervolting process
 

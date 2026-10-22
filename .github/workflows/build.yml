@@ -13,17 +13,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Apply renamed app paths/title
-        run: |
-          sed -i 's|sdmc:/switch/HOC-Battery-Wizard|sdmc:/switch/HOC-Undervolting-Wizard|g' source/main.cpp
-          sed -i 's|/switch/HOC-Battery-Wizard|/switch/HOC-Undervolting-Wizard|g' source/main.cpp
-          sed -i 's|HOC Battery Wizard|HOC Undervolting Wizard|g' source/main.cpp
-
       - name: Build
         run: make -j2
 
       - name: Upload NRO
         uses: actions/upload-artifact@v4
         with:
-          name: HOC-Undervolting-Wizard
+          name: HOC-Undervolting-Wizard-v0.3.0
           path: HOC-Undervolting-Wizard.nro

@@ -6,39 +6,44 @@ This project is designed as a companion to **Performance Modes**:
 
 https://github.com/retrotendo/Ultrahand-Performance-Modes
 
-The idea is simple: use **HOC Undervolting Wizard** to find and validate the lowest stable CPU/RAM voltage settings for your own console, then save those proven values into the **Battery profile** used by Performance Modes.
+Use the wizard to find and validate the lowest stable CPU/RAM voltage settings for your own console, then save those proven values into the **Battery profile** used by Performance Modes.
 
-The wizard can also be used independently if you only want help tuning Horizon OC.
+The wizard can also be used independently for Horizon OC tuning.
 
-## What this app does
+## v0.3 — built-in stability tests
 
-HOC Undervolting Wizard guides you through the complete undervolting process and remembers where you are between reboots.
+The wizard now contains its own timed stability tests. You no longer need to leave the wizard and launch StressNX, MemTester or a separate GPU test for the normal guided workflow.
 
-It tells you:
+Built-in tests include:
 
-- which Horizon OC value to change next;
-- which CPU/GPU/RAM override clocks to use for the test;
-- which stress test to run;
-- whether the next test should be a quick boundary search or a 1-hour validation;
-- what to restore after a failed test or boot failure.
+- **CPU Verify Stress** — multi-threaded deterministic matrix/integer workload with automatic result verification;
+- **RAM Pattern / Mismatch Test** — repeated large-memory write/read patterns with automatic mismatch detection;
+- **Combined CPU + RAM Stress** — CPU verification and RAM pattern testing at the same time;
+- **GPU Compute / Memory Stress** — deko3d compute-shader workload with GPU-buffer verification;
+- **1-minute boundary searches** and **1-hour validation runs** with an on-screen timer and progress display.
 
-After every test you simply return to the wizard and choose:
+A successful timed test is recorded as **PASS automatically**. A detected calculation error, RAM mismatch or GPU execution/verification error is recorded as **FAIL automatically**.
 
-- **A — PASS**
-- **X — FAIL**
-- **Y — DID NOT BOOT**
+The final real-world gameplay validation remains manual because a game cannot run in the foreground at the same time as the wizard.
 
-The next step is calculated automatically.
+## Crash / reboot detection
 
-## Important: the wizard does NOT control Horizon OC
+Before every built-in test starts, the wizard saves a persistent `testRunning` marker to the SD card.
+
+If the console freezes, crashes or reboots during a stress test, the marker remains set. On the next start the wizard asks whether the previous test crashed:
+
+- **YES** — count the unfinished test as FAIL and continue with the safer recovery path;
+- **NO** — treat it as a manual interruption and offer the same test again.
+
+Cancelling a running test with **B** does **not** count as FAIL.
+
+## Important: the wizard still does NOT control Horizon OC
 
 **This app never writes Horizon OC values and never edits `hoc.kip`.**
 
-All voltage and UV changes are made manually by the user inside Horizon OC. This is intentional: the wizard is a tuning assistant, not an automatic overclock/undervolt tool.
+All UV/voltage changes and test clock overrides are still set manually by the user inside Horizon OC. The wizard only manages the workflow, runs the stability tests, records results, and remembers the last known-good values.
 
-Progress is saved automatically before/through reboots and when exiting the app.
-
-State file:
+Progress:
 
 `/switch/HOC-Undervolting-Wizard/state.ini`
 
@@ -52,21 +57,19 @@ Final results:
 
 ## Requirements
 
-The current wizard is intended for:
-
 - Nintendo Switch **Mariko / Switch OLED**
 - Atmosphere CFW
 - Horizon OC installed and working
 - Hekate strongly recommended for boot-failure recovery
 
-For the guided stability tests you should also have the test tools used by the wizard, including **StressNX / Matrixprod**, **Benchmark Toolbox / MemTester**, **CPU-Memtester**, and a GPU stress test.
+**Performance Modes is optional**, but HOC Undervolting Wizard was created specifically to help find validated Battery-profile values for it.
 
-Performance Modes is not technically required to run the wizard, but this wizard was created specifically to help find safe undervolting values for its Battery profile.
+For the RAM tests, launching Homebrew Menu through **title takeover / full application mode** is recommended so the wizard has more memory available. The RAM test automatically falls back to a smaller allocation if necessary and displays how much RAM is being tested per pass.
 
 ## Install the NRO
 
 1. Download `HOC-Undervolting-Wizard.nro`.
-2. On the Switch SD card create:
+2. Create this folder on the Switch SD card:
 
    `/switch/HOC-Undervolting-Wizard/`
 
@@ -74,7 +77,7 @@ Performance Modes is not technically required to run the wizard, but this wizard
 
    `/switch/HOC-Undervolting-Wizard/HOC-Undervolting-Wizard.nro`
 
-Your SD card should look like this:
+SD layout:
 
 ```text
 SD:/
@@ -84,59 +87,58 @@ SD:/
 ```
 
 4. Boot Atmosphere.
-5. Open the Homebrew Menu.
+5. Open Homebrew Menu.
 6. Start **HOC Undervolting Wizard**.
 
-No separate installer is required.
+No installer is required.
 
-### Updating from the early HOC Battery Wizard beta
+### Updating from HOC Battery Wizard beta / v0.2
 
-The renamed app uses a new folder. If you want to keep an existing beta session, copy:
+The wizard now uses:
+
+`/switch/HOC-Undervolting-Wizard/`
+
+If a new `state.ini` does not exist but the old beta state is still present at:
 
 `/switch/HOC-Battery-Wizard/state.ini`
 
-to:
+v0.3 automatically imports that old state on first start.
 
-`/switch/HOC-Undervolting-Wizard/state.ini`
+---
 
-before starting the renamed app for the first time. If you have only been testing the beta and do not need its progress, simply start a new wizard session.
+# Safe boot recovery
 
-## Before starting the undervolting process
+An unstable HOC value can prevent the normal CFW configuration from booting. Keep a **Hekate CFW entry that does not load Horizon OC / `hoc.kip`**.
 
-Because an unstable HOC value can prevent the normal CFW configuration from booting, create or keep a **Hekate CFW entry that does not load Horizon OC / `hoc.kip`**.
+If a value does not boot:
 
-If a tested value does not boot, the wizard will instruct you to:
-
-1. power off the Switch;
-2. boot Hekate;
-3. start the safe CFW entry without `hoc.kip`;
-4. open Horizon OC;
-5. restore the last known-good value shown by the wizard;
-6. Save KIP;
-7. reboot normally;
-8. continue with the required 1-hour validation.
-
-The wizard state survives this process.
+1. Power off the Switch.
+2. Boot Hekate.
+3. Start the safe CFW entry without `hoc.kip`.
+4. Open HOC Undervolting Wizard and choose **DID NOT BOOT**.
+5. The wizard shows the last known-good value to restore.
+6. Open Horizon OC, restore that value and **Save KIP**.
+7. Reboot normally.
+8. Run the required 1-hour built-in validation.
 
 ---
 
 # Normal workflow
 
-A typical step looks like this:
+A typical tuning step is now:
 
-1. Open **HOC Undervolting Wizard**.
-2. Read the next value it asks you to test.
-3. Exit the wizard with **B** if needed — progress is already saved.
-4. Open Horizon OC and enter the requested value manually.
-5. **Save KIP**.
-6. Reboot the Switch.
-7. Set the CPU/GPU/RAM overrides shown by the wizard.
-8. Run the requested stability test.
-9. Open HOC Undervolting Wizard again.
-10. Press **PASS**, **FAIL**, or **DID NOT BOOT**.
-11. Follow the next instruction.
+1. Open HOC Undervolting Wizard.
+2. Read the next HOC value and required CPU/GPU/RAM override clocks.
+3. Exit with **B** if needed; progress is already saved.
+4. Set the requested value in Horizon OC.
+5. **Save KIP** and reboot.
+6. Set the requested clock overrides.
+7. Reopen HOC Undervolting Wizard.
+8. Press **A — START BUILT-IN TEST**.
+9. The wizard runs the test, timer and verification automatically.
+10. PASS/FAIL is recorded automatically and the wizard calculates the next step.
 
-You do not need to remember the previous voltage yourself; the wizard stores the last known-good value.
+You can still press **X — Manual FAIL** if you see instability that the built-in verifier did not catch.
 
 ---
 
@@ -151,15 +153,15 @@ You do not need to remember the previous voltage yourself; the wizard stores the
 7. CPU + RAM Boost validation
 8. Final normal handheld CPU/RAM/GPU tests
 9. Final Nintendo Boost CPU/RAM tests
-10. One-hour real-world validation
+10. One-hour real-world gameplay validation
 
-The wizard uses quick tests to find the stability boundary. Once the first failure is found, the previous working value becomes the candidate for a **1-hour validation**. If that long test fails, the wizard moves one step safer and repeats the validation.
+Quick searches run for **1 minute**. At the first failure, the previous working value becomes the candidate for a **1-hour validation**. If the long validation fails, the wizard moves one step safer and repeats the validation.
 
 ---
 
 # Starting baseline
 
-The current Mariko/OLED workflow begins from:
+Current Mariko/OLED workflow:
 
 - CPU UV Table: Default / Normal — not Extreme
 - CPU Low UV: 0
@@ -169,9 +171,7 @@ The current Mariko/OLED workflow begins from:
 - RAM VDDQ: 600 mV
 - RAM VDD2: 1175 mV
 
-Stock itself is treated as the known-stable baseline, so the wizard does not waste time running a stock stress test before the first undervolting change.
-
-Current HOC search increments used by the wizard:
+Search increments:
 
 - CPU Low UV: +1 level
 - CPU High UV: +1 level
@@ -179,25 +179,38 @@ Current HOC search increments used by the wizard:
 - RAM VDDQ: -5 mV
 - RAM VDD2: -12.5 mV
 
+Stock is treated as the known-stable baseline, so testing starts after the first undervolt change.
+
 ---
 
 # Controls
 
-- **A** — PASS / continue
-- **X** — FAIL
-- **Y** — DID NOT BOOT during quick-search stages
-- **B** — Exit; progress is automatically saved
-- **Minus** — Reset all wizard progress
+Normal test stages:
+
+- **A** — start the built-in test
+- **X** — manual FAIL
+- **Y** — DID NOT BOOT on quick-search stages
+- **B** — exit; progress is automatically saved
+- **Minus** — reset wizard progress
+
+During a built-in stress test:
+
+- **B** — cancel without recording PASS or FAIL
+
+After a crash/reboot is detected on the next launch:
+
+- **A** — yes, the previous test crashed; record FAIL
+- **X** — no, it was interrupted manually; rerun it
 
 ---
 
 # Using the results with Performance Modes
 
-When all validation stages pass, the wizard creates:
+After all validation stages pass, the wizard writes:
 
 `/switch/HOC-Undervolting-Wizard/results.txt`
 
-This contains the final validated values for:
+It contains the final validated values for:
 
 - CPU Low UV
 - CPU Low VMIN
@@ -205,31 +218,41 @@ This contains the final validated values for:
 - RAM VDD2
 - CPU High UV
 
-These are the values you can then use when preparing/saving your **Battery profile** in Performance Modes.
+Use these values when preparing/saving the **Battery profile** in Performance Modes.
 
-HOC Undervolting Wizard does not automatically transfer these settings to Performance Modes. The separation is intentional so the tuning process remains transparent and recoverable.
+The wizard intentionally does not transfer the settings automatically. Horizon OC remains the single place where voltage/UV values are changed.
 
 ---
 
 # Building from source
 
-Most users do **not** need to compile the app themselves. Use the prebuilt NRO from a release/build artifact when available.
+Most users should use the prebuilt NRO artifact/release.
 
-For developers, the project requires devkitPro / devkitA64 with libnx:
+Developers need devkitPro / devkitA64, libnx, deko3d and `uam` (shader compiler):
 
 ```bash
 export DEVKITPRO=/opt/devkitpro
 make
 ```
 
+The build compiles `source/gpu_stress.glsl` into a deko3d `.dksh` compute shader and embeds it in the NRO RomFS.
+
 Output:
 
 `HOC-Undervolting-Wizard.nro`
 
-The included GitHub Actions workflow also builds the NRO automatically on every push.
+GitHub Actions builds the NRO automatically on pushes and pull requests.
 
 ---
 
-## Safety note
+## Safety notes
 
-Undervolting stability differs from console to console. A value that works on one Switch may fail on another. The wizard therefore does not provide a universal "best" voltage; it guides each user through testing their own hardware and validating the result before using it as a daily profile.
+Undervolting stability differs from console to console. A value that works on one Switch may fail on another.
+
+During deliberately unstable RAM boundary testing, avoid installing/updating software or copying important files. A RAM instability can corrupt data before an application has a chance to report a mismatch.
+
+The built-in tests improve automation and repeatability, but they cannot prove absolute stability. Keep the final real-world validation and normal-use transition testing.
+
+## Credits / implementation notes
+
+The GPU test uses **deko3d** and the devkitPro **uam** shader tool. The deko3d setup follows the public patterns documented in the switchbrew/devkitPro examples. The wizard's CPU/RAM verification routines are purpose-built for this project; GPL test code from external stress-test projects is not embedded in this MIT-licensed application.

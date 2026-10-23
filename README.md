@@ -57,6 +57,16 @@ This check uses the same `appletGetAppletType()` distinction as nx-hbmenu: only 
 
 ---
 
+# New in v0.4.0-beta.12
+
+- Remove all manual **Save KIP / Save Toolkit** instructions from the active Wizard guide.
+- Persistent setting changes now simply tell the user when a **CFW reboot** is required.
+- Group every HOC set point under its actual menu area: **General**, **RAM Settings**, **CPU Settings**, **CPU UV**, **HOC Toolkit**, and **Temporary Overrides**.
+- Keep the beta.11 tuning/test logic unchanged.
+- Expand the GitHub Releases API fallback from 5 to 100 entries; the lightweight `UPDATE.txt` manifest remains the primary update source.
+
+---
+
 # New in v0.4.0-beta.11
 
 - More robust startup updater with two independent metadata sources.
@@ -82,7 +92,7 @@ This check uses the same `appletGetAppletType()` distinction as nx-hbmenu: only 
 - Reworked Wizard stage screens into a compact table-style layout.
 - All values that must be entered in Horizon OC and all Temporary Override targets are displayed on the right side of the screen so they remain readable while Ultrahand/Horizon OC is open on the left.
 - The tuning workflow, reboot points, test logic, dynamic Low VMIN detection, recovery behavior and KNOWN PASS/FAIL shortcuts are unchanged from beta.8.
-- `Save KIP + Reboot` is shown only on stages where the persistent HOC value has actually changed.
+- `Reboot CFW` is shown only on stages where the persistent HOC value has actually changed.
 - Dynamic Low VMIN voltage probing remains internal; the UI simply tells the user which Overrides to set and when to continue.
 
 ---
@@ -210,7 +220,7 @@ The Wizard requires Homebrew Menu **title takeover / Full Application Mode**. Ap
 
 ## Install
 
-1. Download `HOC-Undervolting-Wizard.nro` from the latest GitHub release. For beta.8 this is the final required manual update; later builds can be installed by the in-app updater.
+1. Download `HOC-Undervolting-Wizard.nro` from the latest GitHub release. Once an updater-capable build is installed, later builds can be installed by the in-app updater.
 2. Create:
 
    `/switch/HOC-Undervolting-Wizard/`
@@ -235,9 +245,8 @@ If a tuning value prevents normal CFW from booting:
 2. Start CFW without Horizon OC / `hoc.kip`.
 3. Open Horizon OC.
 4. Restore the previous known-good value shown by the Wizard.
-5. Save KIP.
-6. Reboot normally.
-7. Continue validation.
+5. Reboot normally.
+6. Continue validation.
 
 ---
 
@@ -247,26 +256,29 @@ Prepare the Battery profile before tuning using the exact guide starting values 
 
 ## Horizon OC
 
-### Safety
+### General
 
 - **Uncapped Clocks: OFF**
 
-### RAM
+### RAM Settings
 
 - **HP Mode: OFF**
 - **RAM Max Clock: 1600 MHz**
 - **VDD2: 1175 mV**
 - **VDDQ: 600 mV**
 
-### CPU
+### CPU Settings
 
 - **CPU Max Clock: lowest selectable value**
   - current Mariko HOC builds show **1963 MHz** as the lowest selectable CPU Max Clock
+- **Low VMIN: 620 mV**
+- **High VMIN: 750 mV**
+
+### CPU UV
+
 - **CPU UV Table: 1683 MHz Tbreak**
 - **Low UV: 0**
 - **High UV: 0**
-- **Low VMIN: 620 mV**
-- **High VMIN: 750 mV**
 
 ## HOC Toolkit
 
@@ -275,7 +287,7 @@ Prepare the Battery profile before tuning using the exact guide starting values 
 
 After changing persistent HOC/Toolkit settings:
 
-**Save KIP -> reboot CFW -> reopen the Wizard**
+**Reboot CFW -> reopen the Wizard**
 
 ---
 

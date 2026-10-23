@@ -20,7 +20,7 @@ namespace updater {
 namespace {
 
 constexpr const char* RELEASES_API =
-    "https://api.github.com/repos/retrotendo/HOC-Undervolting-Wizard/releases?per_page=5";
+    "https://api.github.com/repos/retrotendo/HOC-Undervolting-Wizard/releases?per_page=100";
 constexpr const char* UPDATE_MANIFEST =
     "https://raw.githubusercontent.com/retrotendo/HOC-Undervolting-Wizard/main/UPDATE.txt";
 constexpr const char* NRO_ASSET = "HOC-Undervolting-Wizard.nro";

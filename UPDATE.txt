@@ -1,3 +1,0 @@
-version=0.4.0-beta.11
-nro_url=https://github.com/retrotendo/HOC-Undervolting-Wizard/releases/download/v0.4.0-beta.11/HOC-Undervolting-Wizard.nro
-sha_url=https://github.com/retrotendo/HOC-Undervolting-Wizard/releases/download/v0.4.0-beta.11/HOC-Undervolting-Wizard.nro.sha256

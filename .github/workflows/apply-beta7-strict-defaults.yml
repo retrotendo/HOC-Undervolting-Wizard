@@ -1,0 +1,27 @@
+name: Apply beta7 strict guide defaults
+
+on:
+  push:
+    branches:
+      - beta7-strict-guide-defaults
+    paths:
+      - 'tools/apply_beta7_strict_defaults.py'
+      - '.github/workflows/apply-beta7-strict-defaults.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: beta7-strict-guide-defaults
+      - run: python3 tools/apply_beta7_strict_defaults.py
+      - run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add source/main.cpp Makefile README.md CHANGELOG.md RELEASE_NOTES_v0.4.0-beta.7.md
+          git commit -m "beta7: use strict guide starting values" || exit 0
+          git push origin beta7-strict-guide-defaults

@@ -22,6 +22,6 @@ jobs:
       - run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add source/main.cpp Makefile README.md CHANGELOG.md RELEASE_NOTES_v0.4.0-beta.6.md .github/workflows/release-v0.4.0-beta.6.yml
+          git add source/main.cpp Makefile README.md CHANGELOG.md RELEASE_NOTES_v0.4.0-beta.6.md
           git commit -m "beta6: block Applet Mode at startup" || exit 0
           git push origin beta6-applet-block

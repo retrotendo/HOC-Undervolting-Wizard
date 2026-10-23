@@ -1,0 +1,27 @@
+name: Apply beta9 UI layout
+
+on:
+  push:
+    branches:
+      - beta9-ultrahand-ui
+    paths:
+      - 'tools/apply_beta9_ui.py'
+      - '.github/workflows/apply-beta9-ui.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: beta9-ultrahand-ui
+      - run: python3 tools/apply_beta9_ui.py
+      - run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add source/main.cpp Makefile README.md CHANGELOG.md
+          git commit -m "beta9: add Ultrahand-friendly right-side UI" || exit 0
+          git push origin beta9-ultrahand-ui

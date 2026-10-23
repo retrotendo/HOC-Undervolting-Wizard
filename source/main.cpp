@@ -575,20 +575,18 @@ void renderPreparation() {
     uiPrintf(17, " - CPU Max         : Lowest selectable (1963)");
     uiPrintf(18, " - Low VMIN        : 620 mV");
     uiPrintf(19, " - High VMIN       : 750 mV");
+    uiPrintf(20, " - UV Table        : 1683 MHz Tbreak");
+    uiPrintf(21, " - Low UV          : 0");
+    uiPrintf(22, " - High UV         : 0");
 
-    uiPrintf(21, "CPU UV:");
-    uiPrintf(22, " - UV Table        : 1683 MHz Tbreak");
-    uiPrintf(23, " - Low UV          : 0");
-    uiPrintf(24, " - High UV         : 0");
+    uiPrintf(24, "@ HOC Toolkit");
+    uiPrintf(26, " - CPU Boost       : Lowest selectable / 1785");
 
-    uiPrintf(26, "@ HOC Toolkit");
-    uiPrintf(28, " - CPU Boost       : Lowest selectable / 1785");
-
-    uiPrintf(30, "Then:");
-    uiPrintf(31, " - Reboot CFW and reopen Wizard");
-    uiPrintf(33, "Keys:");
-    uiPrintf(34, "A : Setup done / Start");
-    uiPrintf(35, "B : Exit    - : Reset");
+    uiPrintf(28, "Then:");
+    uiPrintf(29, " - Reboot CFW and reopen Wizard");
+    uiPrintf(31, "Keys:");
+    uiPrintf(32, "A : Setup done / Start");
+    uiPrintf(33, "B : Exit    - : Reset");
 }
 
 bool isVminSweepStage(Stage st);
@@ -613,20 +611,20 @@ void renderTestStage() {
 
     switch (g.stage) {
         case Stage::LowUvQuick:
-            uiPrintf(row++, "CPU UV:");
+            uiPrintf(row++, "CPU Settings:");
             uiPrintf(row++, " - Low UV : %d", g.lowUvTest);
             uiPrintf(row++, "Action : Reboot CFW");
             break;
         case Stage::LowUvLong:
-            if (g.recoveryNeeded) { printSafeRecovery("CPU UV", "Low UV = " + std::to_string(g.lowUvGood)); row = 16; }
+            if (g.recoveryNeeded) { printSafeRecovery("CPU Settings", "Low UV = " + std::to_string(g.lowUvGood)); row = 16; }
             else {
-                uiPrintf(row++, "CPU UV:");
+                uiPrintf(row++, "CPU Settings:");
                 uiPrintf(row++, " - Low UV : %d", g.lowUvGood);
                 uiPrintf(row++, "Action : Reboot CFW");
             }
             break;
         case Stage::LowVminQuick:
-            uiPrintf(row++, "CPU UV:");
+            uiPrintf(row++, "CPU Settings:");
             uiPrintf(row++, " - Low UV   : %d", g.lowUvGood);
             uiPrintf(row++, "CPU Settings:");
             uiPrintf(row++, " - Low VMIN : %d mV", g.lowVminTest);
@@ -688,24 +686,23 @@ void renderTestStage() {
             uiPrintf(row++, " - VDD2 : %s", formatVdd2(g.vdd2GoodUv).c_str());
             break;
         case Stage::HighUvQuick:
-            uiPrintf(row++, "CPU UV:");
+            uiPrintf(row++, "CPU Settings:");
             uiPrintf(row++, " - High UV : %d", g.highUvTest);
             uiPrintf(row++, "Action  : Reboot CFW");
             break;
         case Stage::HighUvLong:
-            if (g.recoveryNeeded) { printSafeRecovery("CPU UV", "High UV = " + std::to_string(g.highUvGood)); row = 16; }
+            if (g.recoveryNeeded) { printSafeRecovery("CPU Settings", "High UV = " + std::to_string(g.highUvGood)); row = 16; }
             else {
-                uiPrintf(row++, "CPU UV:");
+                uiPrintf(row++, "CPU Settings:");
                 uiPrintf(row++, " - High UV : %d", g.highUvGood);
                 uiPrintf(row++, "Action  : Reboot CFW");
             }
             break;
         case Stage::BoostCpuRamValidate:
-            uiPrintf(row++, "CPU UV:");
-            uiPrintf(row++, " - Low UV  : %d", g.lowUvGood);
-            uiPrintf(row++, " - High UV : %d", g.highUvGood);
             uiPrintf(row++, "CPU Settings:");
-            uiPrintf(row++, " - Low VMIN: %d mV", g.lowVminGood);
+            uiPrintf(row++, " - Low UV   : %d", g.lowUvGood);
+            uiPrintf(row++, " - High UV  : %d", g.highUvGood);
+            uiPrintf(row++, " - Low VMIN : %d mV", g.lowVminGood);
             break;
         case Stage::NormalMatrixValidate:
         case Stage::NormalMemValidate:

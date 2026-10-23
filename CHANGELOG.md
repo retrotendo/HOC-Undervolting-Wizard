@@ -1,3 +1,9 @@
+## v0.4.0-beta.14
+- Fix Horizon OC menu naming: CPU UV controls are part of CPU Settings.
+- Merge CPU Max / VMIN / UV controls into one CPU Settings block in Preparation.
+- Use CPU Settings on all Low UV / High UV / recovery screens.
+- No tuning/test logic changes.
+
 ## v0.4.0-beta.13
 - Add top-level `@ Horizon OC` / `@ HOC Toolkit` headings.
 - Keep Horizon OC submenu names as second-level headings.

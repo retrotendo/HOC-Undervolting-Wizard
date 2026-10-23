@@ -19,7 +19,7 @@ if marker not in s:
 s = s.replace(marker, block, 1)
 
 old = '1. Download `HOC-Undervolting-Wizard.nro` from the latest GitHub release.\n'
-new = ('1. Download `HOC-Undervolting-Wizard.nro` from the latest GitHub release. '\
+new = ('1. Download `HOC-Undervolting-Wizard.nro` from the latest GitHub release. '
        'For beta.8 this is the final required manual update; later builds can be installed by the in-app updater.\n')
 if old not in s:
     raise SystemExit('README install marker not found')
@@ -46,10 +46,4 @@ if '## 6. libcurl' not in s:
     if marker not in s:
         raise SystemExit('THIRD_PARTY marker not found')
     s = s.replace(marker, section, 1)
-p.write_text(s)
-
-# Keep build artifact naming version-neutral from now on.
-p = Path('.github/workflows/build.yml')
-s = p.read_text()
-s = s.replace('name: HOC-Undervolting-Wizard-v0.4.0-beta.5', 'name: HOC-Undervolting-Wizard-build')
 p.write_text(s)

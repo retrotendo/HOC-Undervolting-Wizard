@@ -58,7 +58,9 @@ size_t writeString(void* ptr, size_t size, size_t nmemb, void* userdata) {
 }
 
 size_t writeFile(void* ptr, size_t size, size_t nmemb, void* userdata) {
-    return std::fwrite(ptr, size, nmemb, static_cast<FILE*>(userdata));
+    const size_t total = size * nmemb;
+    FILE* f = static_cast<FILE*>(userdata);
+    return std::fwrite(ptr, 1, total, f) == total ? total : 0;
 }
 
 void setCommonCurlOptions(CURL* curl, const char* url) {

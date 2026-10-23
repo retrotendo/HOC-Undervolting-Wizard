@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.4.0-beta.8
+
+- Add an opt-in startup self-updater for public GitHub releases.
+- Check the newest release before loading Wizard state, only in Full Application Mode.
+- Ask before installation: A installs, B continues the current build.
+- Download updates to `.new`, verify against the release SHA256, then replace the current NRO.
+- Keep the previous NRO as `.bak` and restore it automatically if replacement fails.
+- Use the actual hbloader `argv[0]` NRO path when available, with the standard Wizard path as fallback.
+- Network/update failures are non-fatal and do not affect tuning state.
+- Link the devkitPro `switch-curl` portlib for HTTPS GitHub access.
+
 ## v0.4.0-beta.7
 
 - Use only the exact Battery-guide baseline values on the Preparation screen.

@@ -1030,6 +1030,42 @@ int main() {
     PadState pad;
     padInitializeDefault(&pad);
 
+    // The built-in CPU/RAM/Combined/GPU stability tests require hbmenu to be
+    // launched with full application memory. Match nx-hbmenu's own Applet Mode
+    // detection: only Application/SystemApplication are accepted.
+    const AppletType appletType = appletGetAppletType();
+    const bool fullMemoryMode =
+        appletType == AppletType_Application || appletType == AppletType_SystemApplication;
+
+    if (!fullMemoryMode) {
+        while (appletMainLoop()) {
+            padUpdate(&pad);
+            const u64 k = padGetButtonsDown(&pad);
+
+            consoleClear();
+            std::printf("\x1b[1;1H\x1b[31mHOC Undervolting Wizard - CANNOT START\x1b[0m\n");
+            std::printf("------------------------------------------------------------\n\n");
+            std::printf("\x1b[1mApplet Mode detected.\x1b[0m\n\n");
+            std::printf("The Wizard's stability tests require Full Memory Mode.\n");
+            std::printf("Applet Mode is therefore not supported.\n\n");
+            std::printf("Start hbmenu correctly:\n");
+            std::printf("  1. Return to the HOME Menu.\n");
+            std::printf("  2. Highlight any installed game.\n");
+            std::printf("  3. Hold [R] while starting the game.\n");
+            std::printf("  4. Keep holding [R] until hbmenu opens.\n");
+            std::printf("  5. Start HOC Undervolting Wizard again.\n\n");
+            std::printf("Do NOT launch hbmenu from the Album for stability testing.\n\n");
+            std::printf("[B] Exit\n");
+            consoleUpdate(nullptr);
+
+            if (k & HidNpadButton_B) break;
+            svcSleepThread(20'000'000);
+        }
+
+        consoleExit(nullptr);
+        return 0;
+    }
+
     ensureDir();
     migrateLegacyState();
     if (!loadState()) saveState();

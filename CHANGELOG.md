@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.4.0-beta.6
+
+- Block startup completely when hbmenu launches the Wizard in Applet Mode.
+- Detect Full Memory Mode using `appletGetAppletType()`; only Application/SystemApplication are accepted.
+- Show a dedicated warning with R-button title-takeover instructions instead of opening the guide.
+- Keep beta.5 dynamic VMIN probing and known PASS/FAIL shortcuts unchanged.
+
 ## v0.4.0-beta.5
 
 - Changed the dynamic CPU Low VMIN crossover sweep from repeated 1-minute stress tests to a fast **measurement-only floor probe**.

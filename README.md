@@ -45,6 +45,27 @@ A missing or wrong override blocks the test. No result is recorded until all thr
 
 ---
 
+# Full Memory Mode required
+
+The Wizard must be launched from hbmenu in **Full Memory / Application Mode**.
+
+If it is started in **Applet Mode** (for example through Album), the Wizard stops immediately on a dedicated warning screen. The guide and tuning state are not opened and no built-in test can be started.
+
+To launch correctly, hold **R** while starting an installed game and keep holding **R** until hbmenu opens, then start HOC Undervolting Wizard.
+
+This check uses the same `appletGetAppletType()` distinction as nx-hbmenu: only `Application` and `SystemApplication` modes are accepted.
+
+---
+
+# New in v0.4.0-beta.6
+
+- hard startup block when Applet Mode is detected
+- clear on-screen Full Memory Mode launch instructions
+- no Wizard state/guide/test access until launched as an Application
+- beta.5 dynamic VMIN probe and known-result shortcuts retained
+
+---
+
 # New in v0.4.0-beta.5
 
 ## Known-result shortcuts

@@ -18,7 +18,6 @@ p.write_text(s)
 # --- README ---
 p = Path('README.md')
 s = p.read_text()
-s = s.replace('v0.4.0-beta.5', 'v0.4.0-beta.6', 1)
 marker = '# New in v0.4.0-beta.5\n'
 block = '''# Full Memory Mode required\n\nThe Wizard must be launched from hbmenu in **Full Memory / Application Mode**.\n\nIf it is started in **Applet Mode** (for example through Album), the Wizard stops immediately on a dedicated warning screen. The guide and tuning state are not opened and no built-in test can be started.\n\nTo launch correctly, hold **R** while starting an installed game and keep holding **R** until hbmenu opens, then start HOC Undervolting Wizard.\n\nThis check uses the same `appletGetAppletType()` distinction as nx-hbmenu: only `Application` and `SystemApplication` modes are accepted.\n\n---\n\n# New in v0.4.0-beta.6\n\n- hard startup block when Applet Mode is detected\n- clear on-screen Full Memory Mode launch instructions\n- no Wizard state/guide/test access until launched as an Application\n- beta.5 dynamic VMIN probe and known-result shortcuts retained\n\n---\n\n# New in v0.4.0-beta.5\n'''
 if marker not in s:

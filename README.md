@@ -57,6 +57,15 @@ This check uses the same `appletGetAppletType()` distinction as nx-hbmenu: only 
 
 ---
 
+# New in v0.4.0-beta.14
+
+- Correct the Horizon OC menu hierarchy: there is no separate **CPU UV** menu.
+- CPU Max, Low/High VMIN, UV Table, Low UV and High UV are all shown under **CPU Settings**.
+- Preparation and tuning/recovery screens now use the same real Horizon OC menu path.
+- No tuning, reboot, stress-test, VMIN, override or updater logic changes.
+
+---
+
 # New in v0.4.0-beta.13
 
 - Keep the beta.12 right-side layout, but make the application hierarchy explicit.

@@ -33,9 +33,9 @@ Built-in tests use established open-source workloads:
   - Project-original deko3d compute/memory test.
   - GPU output is verified on the CPU and mismatches fail the test.
 
-Quick boundary tests normally run for **1 minute**. Long validation tests run for **1 hour**.
+Quick boundary tests normally run for **1 minute**. Long validation tests run for **1 hour**. The dynamic Low VMIN floor sweep is measurement-only and does not run a stress test at every frequency.
 
-Before **every built-in test**, the Wizard reads Horizon OC's live `hoc:clk` context and verifies all three Temporary Overrides:
+Before **every built-in test and every VMIN floor probe**, the Wizard reads Horizon OC's live `hoc:clk` context and verifies all three Temporary Overrides:
 
 - CPU
 - GPU
@@ -45,7 +45,7 @@ A missing or wrong override blocks the test. No result is recorded until all thr
 
 ---
 
-# New in v0.4.0-beta.4
+# New in v0.4.0-beta.5
 
 ## Known-result shortcuts
 
@@ -59,6 +59,8 @@ During any built-in test stage:
 
 These shortcuts deliberately bypass the built-in stress test. Use them only for values you already trust from previous testing.
 
+**Exception:** the dynamic VMIN floor-probe stages are measurements, not PASS/FAIL stability tests. There, `A` performs the required measurement, `+` performs the same measurement for convenience, and `X` is disabled.
+
 ## Dynamic CPU Low VMIN detection
 
 The frequency where Low VMIN stops controlling CPU voltage is **not assumed to be identical on every Switch**.
@@ -71,7 +73,9 @@ After the Wizard finds a Low VMIN candidate it performs a short ascending sweep:
 
 GPU remains **384 MHz** and RAM remains **1331.2 MHz**.
 
-At each step the Wizard reads the **live CPU rail voltage reported by Horizon OC**. It remembers the highest CPU frequency still operating at the configured VMIN floor (within one 5 mV PMIC step).
+At each step the Wizard verifies CPU/GPU/RAM overrides and reads the **live CPU rail voltage reported by Horizon OC**. The probe takes **7 context samples** and uses the **median of valid readings** so a single stale HOC poll does not decide the crossover. It remembers the highest CPU frequency still operating at the configured VMIN floor (within one 5 mV PMIC step).
+
+These sweep points are **measurement-only**. They do not each run another 1-minute stress test. The actual stability confirmation is concentrated at the highest detected floor-bound CPU clock.
 
 As soon as the voltage has clearly risen above VMIN, higher sweep steps are no longer needed. The Wizard then runs the **1-hour Low VMIN confirmation at the highest detected floor-bound CPU clock**.
 

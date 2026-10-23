@@ -522,13 +522,14 @@ void title() {
 }
 
 void printSafeRecovery(const char* menu, const std::string& restoreText) {
-    uiPrintf(5, "\x1b[33mPrevious setting did not boot\x1b[0m");
-    uiPrintf(7, "Recovery:");
-    uiPrintf(8, "1. Boot Hekate without hoc.kip");
-    uiPrintf(9, "2. Open Horizon OC");
-    uiPrintf(10, "%s:", menu);
-    uiPrintf(11, "Restore : %s", restoreText.c_str());
-    uiPrintf(12, "3. Reboot CFW");
+    uiPrintf(5, "@ Horizon OC");
+    uiPrintf(7, "\x1b[33mPrevious setting did not boot\x1b[0m");
+    uiPrintf(9, "Recovery:");
+    uiPrintf(10, " - Boot Hekate without hoc.kip");
+    uiPrintf(11, " - Open Horizon OC");
+    uiPrintf(12, "%s:", menu);
+    uiPrintf(13, " - Restore : %s", restoreText.c_str());
+    uiPrintf(14, " - Reboot CFW");
 }
 
 const char* compactTestName(stress::Kind kind) {
@@ -542,10 +543,10 @@ const char* compactTestName(stress::Kind kind) {
 }
 
 void printOverrides(int row, const OverrideExpectation& e) {
-    uiPrintf(row,     "Overrides:");
-    uiPrintf(row + 1, "CPU : %s", formatClock(e.cpuHz).c_str());
-    uiPrintf(row + 2, "GPU : %s", formatClock(e.gpuHz).c_str());
-    uiPrintf(row + 3, "RAM : %s", formatClock(e.ramHz).c_str());
+    uiPrintf(row,     "Temporary Overrides:");
+    uiPrintf(row + 1, " - CPU : %s", formatClock(e.cpuHz).c_str());
+    uiPrintf(row + 2, " - GPU : %s", formatClock(e.gpuHz).c_str());
+    uiPrintf(row + 3, " - RAM : %s", formatClock(e.ramHz).c_str());
 }
 
 void footerTest(int row) {
@@ -559,32 +560,35 @@ void footerTest(int row) {
 
 void renderPreparation() {
     title();
-    uiPrintf(5, "General:");
-    uiPrintf(6, "Uncapped Clocks : OFF");
+    uiPrintf(5, "@ Horizon OC");
 
-    uiPrintf(8, "RAM Settings:");
-    uiPrintf(9, "HP Mode         : OFF");
-    uiPrintf(10, "RAM Max         : 1600 MHz");
-    uiPrintf(11, "VDD2            : 1175 mV");
-    uiPrintf(12, "VDDQ            : 600 mV");
+    uiPrintf(7, "General:");
+    uiPrintf(8, " - Uncapped Clocks : OFF");
 
-    uiPrintf(14, "CPU Settings:");
-    uiPrintf(15, "CPU Max         : Lowest selectable (1963)");
-    uiPrintf(16, "Low VMIN        : 620 mV");
-    uiPrintf(17, "High VMIN       : 750 mV");
+    uiPrintf(10, "RAM Settings:");
+    uiPrintf(11, " - HP Mode         : OFF");
+    uiPrintf(12, " - RAM Max         : 1600 MHz");
+    uiPrintf(13, " - VDD2            : 1175 mV");
+    uiPrintf(14, " - VDDQ            : 600 mV");
 
-    uiPrintf(19, "CPU UV:");
-    uiPrintf(20, "UV Table        : 1683 MHz Tbreak");
-    uiPrintf(21, "Low / High UV   : 0 / 0");
+    uiPrintf(16, "CPU Settings:");
+    uiPrintf(17, " - CPU Max         : Lowest selectable (1963)");
+    uiPrintf(18, " - Low VMIN        : 620 mV");
+    uiPrintf(19, " - High VMIN       : 750 mV");
 
-    uiPrintf(23, "HOC Toolkit:");
-    uiPrintf(24, "CPU Boost       : Lowest selectable / 1785");
+    uiPrintf(21, "CPU UV:");
+    uiPrintf(22, " - UV Table        : 1683 MHz Tbreak");
+    uiPrintf(23, " - Low UV          : 0");
+    uiPrintf(24, " - High UV         : 0");
 
-    uiPrintf(26, "Then:");
-    uiPrintf(27, "Reboot CFW and reopen Wizard");
-    uiPrintf(29, "Keys:");
-    uiPrintf(30, "A : Setup done / Start");
-    uiPrintf(31, "B : Exit    - : Reset");
+    uiPrintf(26, "@ HOC Toolkit");
+    uiPrintf(28, " - CPU Boost       : Lowest selectable / 1785");
+
+    uiPrintf(30, "Then:");
+    uiPrintf(31, " - Reboot CFW and reopen Wizard");
+    uiPrintf(33, "Keys:");
+    uiPrintf(34, "A : Setup done / Start");
+    uiPrintf(35, "B : Exit    - : Reset");
 }
 
 bool isVminSweepStage(Stage st);
@@ -599,26 +603,33 @@ void renderTestStage() {
     const bool hasOverrides = overridePlan(g.stage, expected);
 
     int row = 5;
+    const bool recoveryPage = g.recoveryNeeded &&
+        (g.stage == Stage::LowUvLong || g.stage == Stage::VddqLong ||
+         g.stage == Stage::Vdd2Long || g.stage == Stage::HighUvLong);
+    if (!recoveryPage) {
+        uiPrintf(row++, "@ Horizon OC");
+        row++;
+    }
 
     switch (g.stage) {
         case Stage::LowUvQuick:
             uiPrintf(row++, "CPU UV:");
-            uiPrintf(row++, "Low UV : %d", g.lowUvTest);
+            uiPrintf(row++, " - Low UV : %d", g.lowUvTest);
             uiPrintf(row++, "Action : Reboot CFW");
             break;
         case Stage::LowUvLong:
-            if (g.recoveryNeeded) { printSafeRecovery("CPU UV", "Low UV = " + std::to_string(g.lowUvGood)); row = 14; }
+            if (g.recoveryNeeded) { printSafeRecovery("CPU UV", "Low UV = " + std::to_string(g.lowUvGood)); row = 16; }
             else {
                 uiPrintf(row++, "CPU UV:");
-                uiPrintf(row++, "Low UV : %d", g.lowUvGood);
+                uiPrintf(row++, " - Low UV : %d", g.lowUvGood);
                 uiPrintf(row++, "Action : Reboot CFW");
             }
             break;
         case Stage::LowVminQuick:
             uiPrintf(row++, "CPU UV:");
-            uiPrintf(row++, "Low UV   : %d", g.lowUvGood);
+            uiPrintf(row++, " - Low UV   : %d", g.lowUvGood);
             uiPrintf(row++, "CPU Settings:");
-            uiPrintf(row++, "Low VMIN : %d mV", g.lowVminTest);
+            uiPrintf(row++, " - Low VMIN : %d mV", g.lowVminTest);
             uiPrintf(row++, "Action   : Reboot CFW");
             break;
         case Stage::LowVminLong:
@@ -628,73 +639,73 @@ void renderTestStage() {
         case Stage::LowVminSweep918:
         case Stage::LowVminValidate1020:
             uiPrintf(row++, "CPU Settings:");
-            uiPrintf(row++, "Low VMIN : %d mV", g.lowVminGood);
+            uiPrintf(row++, " - Low VMIN : %d mV", g.lowVminGood);
             break;
         case Stage::LowVminFinalLong:
             uiPrintf(row++, "CPU Settings:");
-            uiPrintf(row++, "Low VMIN : %d mV", g.lowVminGood);
-            uiPrintf(row++, "Floor CPU: %s", formatClock(g.vminFloorHz ? g.vminFloorHz : CLOCK_CPU_VMIN_510_HZ).c_str());
+            uiPrintf(row++, " - Low VMIN : %d mV", g.lowVminGood);
+            uiPrintf(row++, " - Floor CPU: %s", formatClock(g.vminFloorHz ? g.vminFloorHz : CLOCK_CPU_VMIN_510_HZ).c_str());
             break;
         case Stage::VddqQuick:
             uiPrintf(row++, "RAM Settings:");
-            uiPrintf(row++, "VDD2 : %s", formatVdd2(STOCK_VDD2_UV).c_str());
-            uiPrintf(row++, "VDDQ : %d mV", g.vddqTest);
+            uiPrintf(row++, " - VDD2 : %s", formatVdd2(STOCK_VDD2_UV).c_str());
+            uiPrintf(row++, " - VDDQ : %d mV", g.vddqTest);
             uiPrintf(row++, "Action: Reboot CFW");
             break;
         case Stage::VddqLong:
-            if (g.recoveryNeeded) { printSafeRecovery("RAM Settings", "VDDQ = " + std::to_string(g.vddqGood) + " mV"); row = 14; }
+            if (g.recoveryNeeded) { printSafeRecovery("RAM Settings", "VDDQ = " + std::to_string(g.vddqGood) + " mV"); row = 16; }
             else {
                 uiPrintf(row++, "RAM Settings:");
-                uiPrintf(row++, "VDDQ : %d mV", g.vddqGood);
+                uiPrintf(row++, " - VDDQ : %d mV", g.vddqGood);
                 uiPrintf(row++, "Action: Reboot CFW");
             }
             break;
         case Stage::Vdd2Quick:
             uiPrintf(row++, "RAM Settings:");
-            uiPrintf(row++, "VDDQ : %d mV", g.vddqGood);
-            uiPrintf(row++, "VDD2 : %s", formatVdd2(g.vdd2TestUv).c_str());
+            uiPrintf(row++, " - VDDQ : %d mV", g.vddqGood);
+            uiPrintf(row++, " - VDD2 : %s", formatVdd2(g.vdd2TestUv).c_str());
             uiPrintf(row++, "Action: Reboot CFW");
             break;
         case Stage::Vdd2Long:
-            if (g.recoveryNeeded) { printSafeRecovery("RAM Settings", "VDD2 = " + formatVdd2(g.vdd2GoodUv)); row = 14; }
+            if (g.recoveryNeeded) { printSafeRecovery("RAM Settings", "VDD2 = " + formatVdd2(g.vdd2GoodUv)); row = 16; }
             else {
                 uiPrintf(row++, "RAM Settings:");
-                uiPrintf(row++, "VDDQ : %d mV", g.vddqGood);
-                uiPrintf(row++, "VDD2 : %s", formatVdd2(g.vdd2GoodUv).c_str());
+                uiPrintf(row++, " - VDDQ : %d mV", g.vddqGood);
+                uiPrintf(row++, " - VDD2 : %s", formatVdd2(g.vdd2GoodUv).c_str());
                 uiPrintf(row++, "Action: Reboot CFW");
             }
             break;
         case Stage::RamBoostValidate:
             uiPrintf(row++, "RAM Settings:");
-            uiPrintf(row++, "VDDQ : %d mV", g.vddqGood);
-            uiPrintf(row++, "VDD2 : %s", formatVdd2(g.vdd2GoodUv).c_str());
+            uiPrintf(row++, " - VDDQ : %d mV", g.vddqGood);
+            uiPrintf(row++, " - VDD2 : %s", formatVdd2(g.vdd2GoodUv).c_str());
             if (g.ramPairRetryMode == 1) uiPrintf(row++, "Retry: VDDQ +10 mV");
             if (g.ramPairRetryMode == 2) uiPrintf(row++, "Retry: VDD2 +12.5 mV");
             break;
         case Stage::Ram1331Validate:
             uiPrintf(row++, "RAM Settings:");
-            uiPrintf(row++, "VDDQ : %d mV", g.vddqGood);
-            uiPrintf(row++, "VDD2 : %s", formatVdd2(g.vdd2GoodUv).c_str());
+            uiPrintf(row++, " - VDDQ : %d mV", g.vddqGood);
+            uiPrintf(row++, " - VDD2 : %s", formatVdd2(g.vdd2GoodUv).c_str());
             break;
         case Stage::HighUvQuick:
             uiPrintf(row++, "CPU UV:");
-            uiPrintf(row++, "High UV : %d", g.highUvTest);
+            uiPrintf(row++, " - High UV : %d", g.highUvTest);
             uiPrintf(row++, "Action  : Reboot CFW");
             break;
         case Stage::HighUvLong:
-            if (g.recoveryNeeded) { printSafeRecovery("CPU UV", "High UV = " + std::to_string(g.highUvGood)); row = 14; }
+            if (g.recoveryNeeded) { printSafeRecovery("CPU UV", "High UV = " + std::to_string(g.highUvGood)); row = 16; }
             else {
                 uiPrintf(row++, "CPU UV:");
-                uiPrintf(row++, "High UV : %d", g.highUvGood);
+                uiPrintf(row++, " - High UV : %d", g.highUvGood);
                 uiPrintf(row++, "Action  : Reboot CFW");
             }
             break;
         case Stage::BoostCpuRamValidate:
             uiPrintf(row++, "CPU UV:");
-            uiPrintf(row++, "Low UV  : %d", g.lowUvGood);
-            uiPrintf(row++, "High UV : %d", g.highUvGood);
+            uiPrintf(row++, " - Low UV  : %d", g.lowUvGood);
+            uiPrintf(row++, " - High UV : %d", g.highUvGood);
             uiPrintf(row++, "CPU Settings:");
-            uiPrintf(row++, "Low VMIN: %d mV", g.lowVminGood);
+            uiPrintf(row++, " - Low VMIN: %d mV", g.lowVminGood);
             break;
         case Stage::NormalMatrixValidate:
         case Stage::NormalMemValidate:
@@ -732,16 +743,17 @@ void renderTestStage() {
 
 void renderRealWorld() {
     title();
-    uiPrintf(5, "Temporary Overrides:");
-    uiPrintf(6, "Remove all Overrides");
-    uiPrintf(8, "Test:");
-    uiPrintf(9, "1 hour Tears of the Kingdom");
-    uiPrintf(10, "Fast travel / battles / loading");
-    uiPrintf(11, "Home + Sleep/Wake");
-    uiPrintf(13, "Keys:");
-    uiPrintf(14, "A : PASS");
-    uiPrintf(15, "X : FAIL");
-    uiPrintf(16, "B : Exit");
+    uiPrintf(5, "@ Horizon OC");
+    uiPrintf(7, "Temporary Overrides:");
+    uiPrintf(8, " - Remove all Overrides");
+    uiPrintf(10, "Test:");
+    uiPrintf(11, "1 hour Tears of the Kingdom");
+    uiPrintf(12, "Fast travel / battles / loading");
+    uiPrintf(13, "Home + Sleep/Wake");
+    uiPrintf(15, "Keys:");
+    uiPrintf(16, "A : PASS");
+    uiPrintf(17, "X : FAIL");
+    uiPrintf(18, "B : Exit");
 }
 
 void renderComplete() {

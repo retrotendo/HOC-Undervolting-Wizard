@@ -57,6 +57,16 @@ This check uses the same `appletGetAppletType()` distinction as nx-hbmenu: only 
 
 ---
 
+# New in v0.4.0-beta.13
+
+- Keep the beta.12 right-side layout, but make the application hierarchy explicit.
+- Horizon OC values are shown under one **@ Horizon OC** heading, with the actual submenu below it (General, RAM Settings, CPU Settings, CPU UV, Temporary Overrides).
+- HOC Toolkit values are separated under **@ HOC Toolkit**.
+- Child settings use a compact `- setting : value` table style for quick reading while Ultrahand is open.
+- Tuning, reboot, test, VMIN and updater logic are unchanged.
+
+---
+
 # New in v0.4.0-beta.12
 
 - Remove all manual **Save KIP / Save Toolkit** instructions from the active Wizard guide.

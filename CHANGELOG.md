@@ -1,3 +1,9 @@
+## v0.4.0-beta.13
+- Add top-level `@ Horizon OC` / `@ HOC Toolkit` headings.
+- Keep Horizon OC submenu names as second-level headings.
+- Use compact child-row formatting for settings and Temporary Overrides.
+- No tuning/test logic changes.
+
 # Changelog
 
 ## v0.4.0-beta.12

@@ -1,10 +1,10 @@
 from pathlib import Path
 import re
 
+# One-shot patch for beta.13 UI hierarchy.
 p = Path('source/main.cpp')
 s = p.read_text()
 
-# Right-side table helpers: make the Horizon OC hierarchy explicit.
 s = s.replace(
 '''void printSafeRecovery(const char* menu, const std::string& restoreText) {
     uiPrintf(5, "\\x1b[33mPrevious setting did not boot\\x1b[0m");
@@ -83,14 +83,12 @@ s, n = prep_pattern.subn(prep_new, s, count=1)
 if n != 1:
     raise SystemExit('renderPreparation block not found')
 
-# Put the application heading above normal tuning stages. Recovery pages render their own heading.
 needle = '''    int row = 5;\n\n    switch (g.stage) {'''
 replacement = '''    int row = 5;\n    const bool recoveryPage = g.recoveryNeeded &&\n        (g.stage == Stage::LowUvLong || g.stage == Stage::VddqLong ||\n         g.stage == Stage::Vdd2Long || g.stage == Stage::HighUvLong);\n    if (!recoveryPage) {\n        uiPrintf(row++, "@ Horizon OC");\n        row++;\n    }\n\n    switch (g.stage) {'''
 if needle not in s:
     raise SystemExit('renderTestStage insertion point not found')
 s = s.replace(needle, replacement, 1)
 
-# Recovery layouts gained two rows.
 s = s.replace('printSafeRecovery("CPU UV", "Low UV = " + std::to_string(g.lowUvGood)); row = 14;',
               'printSafeRecovery("CPU UV", "Low UV = " + std::to_string(g.lowUvGood)); row = 16;')
 s = s.replace('printSafeRecovery("RAM Settings", "VDDQ = " + std::to_string(g.vddqGood) + " mV"); row = 14;',
@@ -100,7 +98,6 @@ s = s.replace('printSafeRecovery("RAM Settings", "VDD2 = " + formatVdd2(g.vdd2Go
 s = s.replace('printSafeRecovery("CPU UV", "High UV = " + std::to_string(g.highUvGood)); row = 14;',
               'printSafeRecovery("CPU UV", "High UV = " + std::to_string(g.highUvGood)); row = 16;')
 
-# Prefix user-entered values with a visual child marker. Keep actions/tests separate.
 labels = [
     'Low UV : %d', 'Low UV   : %d', 'Low VMIN : %d mV', 'Floor CPU: %s',
     'VDD2 : %s', 'VDDQ : %d mV', 'High UV : %d', 'Low UV  : %d',
@@ -109,7 +106,6 @@ labels = [
 for label in labels:
     s = s.replace('"' + label + '"', '" - ' + label + '"')
 
-# Real-world screen uses the same hierarchy.
 s = s.replace(
 '''void renderRealWorld() {
     title();
@@ -127,16 +123,13 @@ s = s.replace('    uiPrintf(8, "Test:");\n    uiPrintf(9, "1 hour Tears of the K
 
 p.write_text(s)
 
-# Version bump.
 p = Path('Makefile')
 s = p.read_text().replace('APP_VERSION := 0.4.0-beta.12', 'APP_VERSION := 0.4.0-beta.13')
 p.write_text(s)
 
-# Public update manifest.
 p = Path('UPDATE.txt')
 p.write_text('''version=0.4.0-beta.13\nnro_url=https://github.com/retrotendo/HOC-Undervolting-Wizard/releases/download/v0.4.0-beta.13/HOC-Undervolting-Wizard.nro\nsha_url=https://github.com/retrotendo/HOC-Undervolting-Wizard/releases/download/v0.4.0-beta.13/HOC-Undervolting-Wizard.nro.sha256\n''')
 
-# README / changelog: concise documentation of the hierarchy change.
 p = Path('README.md')
 s = p.read_text()
 marker = '# New in v0.4.0-beta.12\n'

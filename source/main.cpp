@@ -5,6 +5,7 @@
 #include "updater.hpp"
 
 #include <algorithm>
+#include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -470,183 +471,240 @@ void writeResults() {
     f << "Nintendo Boost target: 1785 / 76.8 / 1600.\n";
 }
 
+constexpr int UI_COL = 82;
+
+void uiPrintf(int row, const char* fmt, ...) {
+    std::printf("\x1b[%d;%dH", row, UI_COL);
+    va_list args;
+    va_start(args, fmt);
+    std::vprintf(fmt, args);
+    va_end(args);
+}
+
+const char* compactStepName(Stage s) {
+    switch (s) {
+        case Stage::Preparation: return "Preparation";
+        case Stage::LowUvQuick: return "CPU Low UV";
+        case Stage::LowUvLong: return "CPU Low UV - Validate";
+        case Stage::LowVminQuick: return "CPU Low VMIN";
+        case Stage::LowVminLong: return "CPU Low VMIN - Clock Check";
+        case Stage::LowVminSweep612: return "CPU Low VMIN - Clock Check";
+        case Stage::LowVminSweep714: return "CPU Low VMIN - Clock Check";
+        case Stage::LowVminValidate816: return "CPU Low VMIN - Clock Check";
+        case Stage::LowVminSweep918: return "CPU Low VMIN - Clock Check";
+        case Stage::LowVminValidate1020: return "CPU Low VMIN - Clock Check";
+        case Stage::LowVminFinalLong: return "CPU Low VMIN - Validate";
+        case Stage::VddqQuick: return "RAM VDDQ";
+        case Stage::VddqLong: return "RAM VDDQ - Validate";
+        case Stage::Vdd2Quick: return "RAM VDD2";
+        case Stage::Vdd2Long: return "RAM VDD2 - Validate";
+        case Stage::RamBoostValidate: return "RAM Rails - Boost";
+        case Stage::Ram1331Validate: return "RAM Rails - Handheld";
+        case Stage::HighUvQuick: return "CPU High UV";
+        case Stage::HighUvLong: return "CPU High UV - Validate";
+        case Stage::BoostCpuRamValidate: return "Boost CPU + RAM";
+        case Stage::NormalMatrixValidate: return "Final Handheld - CPU";
+        case Stage::NormalMemValidate: return "Final Handheld - RAM";
+        case Stage::NormalGpuValidate: return "Final Handheld - GPU";
+        case Stage::BoostMatrixValidate: return "Final Boost - CPU";
+        case Stage::BoostMemValidate: return "Final Boost - RAM";
+        case Stage::BoostCpuMemValidate: return "Final Boost - CPU + RAM";
+        case Stage::RealWorldValidate: return "Real World";
+        case Stage::Complete: return "Complete";
+    }
+    return "Unknown";
+}
+
 void title() {
-    std::printf("\x1b[1;1H\x1b[36mHOC Undervolting Wizard\x1b[0m   Mariko / OLED\n");
-    std::printf("%s\n", stageName(g.stage));
-    std::printf("------------------------------------------------------------\n\n");
+    uiPrintf(1, "\x1b[36mBattery Wizard\x1b[0m");
+    uiPrintf(2, "Step : %s", compactStepName(g.stage));
+    uiPrintf(3, "----------------------------------------------");
 }
 
 void printSafeRecovery(const std::string& restoreText) {
-    std::printf("\x1b[33mPrevious setting did not boot.\x1b[0m\n\n");
-    std::printf("1. Boot Hekate.\n");
-    std::printf("2. Start CFW WITHOUT Horizon OC / hoc.kip.\n");
-    std::printf("3. Open Horizon OC.\n");
-    std::printf("4. Restore: %s\n", restoreText.c_str());
-    std::printf("5. Save KIP and reboot normally.\n\n");
+    uiPrintf(5, "\x1b[33mPrevious setting did not boot\x1b[0m");
+    uiPrintf(7, "Recovery:");
+    uiPrintf(8, "1. Boot Hekate without hoc.kip");
+    uiPrintf(9, "2. Open Horizon OC");
+    uiPrintf(10, "3. Restore : %s", restoreText.c_str());
+    uiPrintf(11, "4. Save KIP + Reboot");
 }
 
-void footerTest() {
-    std::printf("\n\x1b[32m[A] START BUILT-IN TEST\x1b[0m   \x1b[36m[+] KNOWN PASS / SKIP\x1b[0m\n");
-    std::printf("\x1b[31m[X] KNOWN FAIL / SKIP\x1b[0m\n");
-    if (isQuickStage(g.stage)) std::printf("\x1b[33m[Y] DID NOT BOOT\x1b[0m\n");
-    std::printf("[B] Exit   [-] Reset wizard\n");
+const char* compactTestName(stress::Kind kind) {
+    switch (kind) {
+        case stress::Kind::Cpu: return "Matrix + Hanoi";
+        case stress::Kind::Ram: return "RAM memtester";
+        case stress::Kind::Combined: return "CPU + RAM";
+        case stress::Kind::Gpu: return "GPU compute/memory";
+    }
+    return "Built-in test";
+}
+
+void printOverrides(int row, const OverrideExpectation& e) {
+    uiPrintf(row,     "Overrides:");
+    uiPrintf(row + 1, "CPU : %s", formatClock(e.cpuHz).c_str());
+    uiPrintf(row + 2, "GPU : %s", formatClock(e.gpuHz).c_str());
+    uiPrintf(row + 3, "RAM : %s", formatClock(e.ramHz).c_str());
+}
+
+void footerTest(int row) {
+    uiPrintf(row,     "Keys:");
+    uiPrintf(row + 1, "A : Start Test");
+    uiPrintf(row + 2, "+ : Known PASS / Skip");
+    uiPrintf(row + 3, "X : Known FAIL / Skip");
+    if (isQuickStage(g.stage)) uiPrintf(row + 4, "Y : Did Not Boot");
+    uiPrintf(row + 5, "B : Exit    - : Reset");
 }
 
 void renderPreparation() {
     title();
-    std::printf("Before tuning, prepare the Battery profile once.\n\n");
-    std::printf("Horizon OC - Safety / RAM:\n");
-    std::printf("  Uncapped Clocks : OFF\n");
-    std::printf("  HP Mode          : OFF\n");
-    std::printf("  RAM Max Clock    : 1600 MHz\n");
-    std::printf("  VDD2             : 1175 mV\n");
-    std::printf("  VDDQ             : 600 mV\n\n");
-    std::printf("Horizon OC - CPU:\n");
-    std::printf("  CPU Max Clock    : LOWEST SELECTABLE (currently 1963 MHz)\n");
-    std::printf("  CPU UV Table     : 1683 MHz Tbreak\n");
-    std::printf("  Low UV / High UV : 0 / 0\n");
-    std::printf("  Low VMIN         : 620 mV\n");
-    std::printf("  High VMIN        : 750 mV\n\n");
-    std::printf("HOC Toolkit:\n");
-    std::printf("  CPU Boost Clock  : LOWEST SELECTABLE (stock target 1785 MHz)\n\n");
-    std::printf("Save/apply Toolkit values, Save KIP, then REBOOT CFW.\n");
-    std::printf("After reboot reopen this Wizard and press [A].\n\n");
-    std::printf("Already know a value? During any built-in test use [+] to\n");
-    std::printf("record a KNOWN PASS without running it, or [X] for KNOWN FAIL.\n\n");
-    std::printf("[A] Setup done - start tuning   [B] Exit   [-] Reset\n");
+    uiPrintf(5, "Set in Horizon OC:");
+    uiPrintf(6, "Uncapped Clocks : OFF");
+    uiPrintf(7, "HP Mode         : OFF");
+    uiPrintf(8, "RAM Max         : 1600 MHz");
+    uiPrintf(9, "VDD2            : 1175 mV");
+    uiPrintf(10, "VDDQ            : 600 mV");
+    uiPrintf(11, "CPU Max         : Lowest selectable (1963)");
+    uiPrintf(12, "CPU UV Table    : 1683 MHz Tbreak");
+    uiPrintf(13, "Low / High UV   : 0 / 0");
+    uiPrintf(14, "Low VMIN        : 620 mV");
+    uiPrintf(15, "High VMIN       : 750 mV");
+    uiPrintf(17, "HOC Toolkit:");
+    uiPrintf(18, "CPU Boost       : Lowest selectable / 1785");
+    uiPrintf(20, "Then:");
+    uiPrintf(21, "Save Toolkit + Save KIP + Reboot CFW");
+    uiPrintf(22, "Reopen Wizard after reboot");
+    uiPrintf(24, "Keys:");
+    uiPrintf(25, "A : Setup done / Start");
+    uiPrintf(26, "B : Exit    - : Reset");
 }
 
 bool isVminSweepStage(Stage st);
 
 void renderTestStage() {
     title();
+
     stress::Kind kind;
     int seconds = 0;
-    testPlan(g.stage, kind, seconds);
+    const bool hasTest = testPlan(g.stage, kind, seconds);
+    OverrideExpectation expected{};
+    const bool hasOverrides = overridePlan(g.stage, expected);
+
+    int row = 5;
+    uiPrintf(row++, "Set in HOC:");
 
     switch (g.stage) {
         case Stage::LowUvQuick:
-            std::printf("In Horizon OC set CPU Low UV = \x1b[1m%d\x1b[0m\n", g.lowUvTest);
-            std::printf("Save KIP and reboot. Then set Overrides:\n");
-            std::printf("  CPU 1020 / GPU 384 / RAM 1331\n");
+            uiPrintf(row++, "Low UV : %d", g.lowUvTest);
+            uiPrintf(row++, "Action : Save KIP + Reboot");
             break;
         case Stage::LowUvLong:
-            if (g.recoveryNeeded) printSafeRecovery("CPU Low UV = " + std::to_string(g.lowUvGood));
-            else std::printf("Restore CPU Low UV = \x1b[1m%d\x1b[0m, Save KIP and reboot.\n", g.lowUvGood);
-            std::printf("Overrides: CPU 1020 / GPU 384 / RAM 1331\n");
+            if (g.recoveryNeeded) { printSafeRecovery("CPU Low UV = " + std::to_string(g.lowUvGood)); row = 13; }
+            else {
+                uiPrintf(row++, "Low UV : %d", g.lowUvGood);
+                uiPrintf(row++, "Action : Save KIP + Reboot");
+            }
             break;
         case Stage::LowVminQuick:
-            std::printf("Keep CPU Low UV = %d.\n", g.lowUvGood);
-            std::printf("Set CPU Low VMIN = \x1b[1m%d mV\x1b[0m, Save KIP and reboot.\n", g.lowVminTest);
-            std::printf("Quick-search Overrides: CPU 510 / GPU 384 / RAM 1331\n");
+            uiPrintf(row++, "Low UV   : %d", g.lowUvGood);
+            uiPrintf(row++, "Low VMIN : %d mV", g.lowVminTest);
+            uiPrintf(row++, "Action   : Save KIP + Reboot");
             break;
         case Stage::LowVminLong:
-            if (g.recoveryNeeded) printSafeRecovery("CPU Low VMIN = " + std::to_string(g.lowVminGood) + " mV");
-            else std::printf("Use candidate Low VMIN = \x1b[1m%d mV\x1b[0m.\n", g.lowVminGood);
-            std::printf("Dynamic floor sweep: 510 MHz. CPU voltage is read from HOC.\n");
-            std::printf("Overrides: CPU 510 / GPU 384 / RAM 1331\n");
-            break;
         case Stage::LowVminSweep612:
-            std::printf("Dynamic floor sweep: 612 MHz.\nOverrides: CPU 612 / GPU 384 / RAM 1331\n");
-            break;
         case Stage::LowVminSweep714:
-            std::printf("Dynamic floor sweep: 714 MHz.\nOverrides: CPU 714 / GPU 384 / RAM 1331\n");
-            break;
         case Stage::LowVminValidate816:
-            std::printf("Dynamic floor sweep: 816 MHz.\nOverrides: CPU 816 / GPU 384 / RAM 1331\n");
-            break;
         case Stage::LowVminSweep918:
-            std::printf("Dynamic floor sweep: 918 MHz.\nOverrides: CPU 918 / GPU 384 / RAM 1331\n");
-            break;
         case Stage::LowVminValidate1020:
-            std::printf("Dynamic floor sweep: 1020 MHz.\nOverrides: CPU 1020 / GPU 384 / RAM 1331\n");
+            uiPrintf(row++, "Low VMIN : %d mV", g.lowVminGood);
+            uiPrintf(row++, "Action   : Set Overrides below");
             break;
         case Stage::LowVminFinalLong:
-            std::printf("Detected highest CPU clock still on the VMIN floor:\n");
-            std::printf("  %u MHz at about %d mV\n", (g.vminFloorHz ? g.vminFloorHz : CLOCK_CPU_VMIN_510_HZ) / 1000000U,
-                        g.vminFloorObservedMv ? g.vminFloorObservedMv : g.lowVminGood);
-            std::printf("Run the 1-hour confirmation at that clock.\n");
-            std::printf("GPU 384 / RAM 1331 remain fixed.\n");
-            std::printf("After PASS also check Home, Sleep/Wake, game launch/close.\n");
+            uiPrintf(row++, "Low VMIN : %d mV", g.lowVminGood);
+            uiPrintf(row++, "Floor CPU: %s", formatClock(g.vminFloorHz ? g.vminFloorHz : CLOCK_CPU_VMIN_510_HZ).c_str());
             break;
         case Stage::VddqQuick:
-            std::printf("Keep VDD2 at stock %s.\n", formatVdd2(STOCK_VDD2_UV).c_str());
-            std::printf("Set RAM VDDQ = \x1b[1m%d mV\x1b[0m, Save KIP and reboot.\n", g.vddqTest);
-            std::printf("Overrides: CPU 1785 / GPU 76.8 / RAM 1600\n");
+            uiPrintf(row++, "VDD2 : %s", formatVdd2(STOCK_VDD2_UV).c_str());
+            uiPrintf(row++, "VDDQ : %d mV", g.vddqTest);
+            uiPrintf(row++, "Action: Save KIP + Reboot");
             break;
         case Stage::VddqLong:
-            if (g.recoveryNeeded) printSafeRecovery("RAM VDDQ = " + std::to_string(g.vddqGood) + " mV");
-            else std::printf("Restore RAM VDDQ = \x1b[1m%d mV\x1b[0m, Save KIP and reboot.\n", g.vddqGood);
-            std::printf("Overrides: CPU 1785 / GPU 76.8 / RAM 1600\n");
+            if (g.recoveryNeeded) { printSafeRecovery("RAM VDDQ = " + std::to_string(g.vddqGood) + " mV"); row = 13; }
+            else {
+                uiPrintf(row++, "VDDQ : %d mV", g.vddqGood);
+                uiPrintf(row++, "Action: Save KIP + Reboot");
+            }
             break;
         case Stage::Vdd2Quick:
-            std::printf("Keep final VDDQ = %d mV.\n", g.vddqGood);
-            std::printf("Set RAM VDD2 = \x1b[1m%s\x1b[0m, Save KIP and reboot.\n", formatVdd2(g.vdd2TestUv).c_str());
-            std::printf("Overrides: CPU 1785 / GPU 76.8 / RAM 1600\n");
+            uiPrintf(row++, "VDDQ : %d mV", g.vddqGood);
+            uiPrintf(row++, "VDD2 : %s", formatVdd2(g.vdd2TestUv).c_str());
+            uiPrintf(row++, "Action: Save KIP + Reboot");
             break;
         case Stage::Vdd2Long:
-            if (g.recoveryNeeded) printSafeRecovery("RAM VDD2 = " + formatVdd2(g.vdd2GoodUv));
-            else std::printf("Restore RAM VDD2 = \x1b[1m%s\x1b[0m, Save KIP and reboot.\n", formatVdd2(g.vdd2GoodUv).c_str());
-            std::printf("Keep VDDQ = %d mV.\n", g.vddqGood);
-            std::printf("Overrides: CPU 1785 / GPU 76.8 / RAM 1600\n");
+            if (g.recoveryNeeded) { printSafeRecovery("RAM VDD2 = " + formatVdd2(g.vdd2GoodUv)); row = 13; }
+            else {
+                uiPrintf(row++, "VDDQ : %d mV", g.vddqGood);
+                uiPrintf(row++, "VDD2 : %s", formatVdd2(g.vdd2GoodUv).c_str());
+                uiPrintf(row++, "Action: Save KIP + Reboot");
+            }
             break;
         case Stage::RamBoostValidate:
-            std::printf("Confirm final VDDQ + VDD2 together at Nintendo Boost clocks.\n");
-            std::printf("VDDQ %d mV / VDD2 %s\n", g.vddqGood, formatVdd2(g.vdd2GoodUv).c_str());
-            if (g.ramPairRetryMode == 1) std::printf("Retry mode: VDDQ raised by one 10 mV step.\n");
-            if (g.ramPairRetryMode == 2) std::printf("Retry mode: VDDQ restored; VDD2 raised by 12.5 mV.\n");
-            std::printf("Overrides: CPU 1785 / GPU 76.8 / RAM 1600\n");
+            uiPrintf(row++, "VDDQ : %d mV", g.vddqGood);
+            uiPrintf(row++, "VDD2 : %s", formatVdd2(g.vdd2GoodUv).c_str());
+            if (g.ramPairRetryMode == 1) uiPrintf(row++, "Retry: VDDQ +10 mV");
+            if (g.ramPairRetryMode == 2) uiPrintf(row++, "Retry: VDD2 +12.5 mV");
             break;
         case Stage::Ram1331Validate:
-            std::printf("Final RAM rails: VDDQ %d mV / VDD2 %s\n", g.vddqGood, formatVdd2(g.vdd2GoodUv).c_str());
-            std::printf("Overrides: CPU 1020 / GPU 384 / RAM 1331\n");
+            uiPrintf(row++, "VDDQ : %d mV", g.vddqGood);
+            uiPrintf(row++, "VDD2 : %s", formatVdd2(g.vdd2GoodUv).c_str());
             break;
         case Stage::HighUvQuick:
-            std::printf("Keep final Low UV/VMIN/RAM values.\n");
-            std::printf("Set CPU High UV = \x1b[1m%d\x1b[0m, Save KIP and reboot.\n", g.highUvTest);
-            std::printf("Overrides: CPU 1785 / GPU 76.8 / RAM 1600\n");
+            uiPrintf(row++, "High UV : %d", g.highUvTest);
+            uiPrintf(row++, "Action  : Save KIP + Reboot");
             break;
         case Stage::HighUvLong:
-            if (g.recoveryNeeded) printSafeRecovery("CPU High UV = " + std::to_string(g.highUvGood));
-            else std::printf("Restore CPU High UV = \x1b[1m%d\x1b[0m, Save KIP and reboot.\n", g.highUvGood);
-            std::printf("Overrides: CPU 1785 / GPU 76.8 / RAM 1600\n");
+            if (g.recoveryNeeded) { printSafeRecovery("CPU High UV = " + std::to_string(g.highUvGood)); row = 13; }
+            else {
+                uiPrintf(row++, "High UV : %d", g.highUvGood);
+                uiPrintf(row++, "Action  : Save KIP + Reboot");
+            }
             break;
         case Stage::BoostCpuRamValidate:
-            std::printf("Combined CPU + RAM validation.\n");
-            std::printf("Overrides: CPU 1785 / GPU 76.8 / RAM 1600\n");
+            uiPrintf(row++, "Low UV  : %d", g.lowUvGood);
+            uiPrintf(row++, "High UV : %d", g.highUvGood);
+            uiPrintf(row++, "VMIN    : %d mV", g.lowVminGood);
             break;
         case Stage::NormalMatrixValidate:
-            std::printf("Final normal CPU validation.\nOverrides: CPU 1020 / GPU 384 / RAM 1331\n"); break;
         case Stage::NormalMemValidate:
-            std::printf("Final normal RAM validation.\nOverrides: CPU 1020 / GPU 384 / RAM 1331\n"); break;
         case Stage::NormalGpuValidate:
-            std::printf("Final normal GPU compute/memory validation.\nOverrides: CPU 1020 / GPU 384 / RAM 1331\n"); break;
         case Stage::BoostMatrixValidate:
-            std::printf("Final Boost CPU validation.\nOverrides: CPU 1785 / GPU 76.8 / RAM 1600\n"); break;
         case Stage::BoostMemValidate:
-            std::printf("Final Boost RAM validation.\nOverrides: CPU 1785 / GPU 76.8 / RAM 1600\n"); break;
         case Stage::BoostCpuMemValidate:
-            std::printf("Final Boost combined validation.\nOverrides: CPU 1785 / GPU 76.8 / RAM 1600\n"); break;
+            uiPrintf(row++, "Use final validated values");
+            break;
         default:
             break;
     }
 
+    row++;
+    if (hasOverrides) {
+        printOverrides(row, expected);
+        row += 5;
+    }
+
     if (isVminSweepStage(g.stage)) {
-        std::printf("\n\x1b[36mVMIN FLOOR PROBE - NO STRESS TEST\x1b[0m\n");
-        std::printf("CPU + GPU + RAM Overrides are verified first.\n");
-        std::printf("The Wizard then samples the live CPU rail several times\n");
-        std::printf("and uses the median voltage to detect the floor crossover.\n\n");
-        std::printf("\x1b[32m[A] VERIFY OVERRIDES + MEASURE\x1b[0m   [B] Exit\n");
+        uiPrintf(row++, "Next:");
+        uiPrintf(row++, "A : Continue");
+        uiPrintf(row++, "    (CPU voltage checked automatically)");
+        uiPrintf(row++, "B : Exit");
         return;
     }
 
-    std::printf("\nBuilt-in test: \x1b[1m%s\x1b[0m\n", stress::kindName(kind));
-    std::printf("Duration: \x1b[1m%s\x1b[0m\n", seconds == 60 ? "1 minute" : "1 hour");
-    std::printf("Errors/mismatches are detected automatically.\n");
-    std::printf("CPU + GPU + RAM Overrides are verified before EVERY test.\n");
-    if (kind == stress::Kind::Ram || kind == stress::Kind::Combined)
-        std::printf("Do not install/update/copy files while testing unstable RAM.\n");
-    footerTest();
+    if (hasTest) {
+        uiPrintf(row++, "Test:");
+        uiPrintf(row++, "%s - %s", seconds == 60 ? "1 min" : "1 hour", compactTestName(kind));
+        footerTest(row + 1);
+    }
 }
 
 void renderRealWorld() {
@@ -689,58 +747,41 @@ void renderInterruptedPrompt() {
 
 void renderOverridePrompt() {
     consoleClear();
-    std::printf("\x1b[1;1H\x1b[31mHOC Undervolting Wizard - TEST BLOCKED\x1b[0m\n");
-    std::printf("------------------------------------------------------------\n\n");
+    uiPrintf(1, "\x1b[31mBattery Wizard - TEST BLOCKED\x1b[0m");
+    uiPrintf(2, "Step : %s", compactStepName(g.stage));
+    uiPrintf(3, "----------------------------------------------");
 
     if (!g_overrideCheck.readOk) {
-        std::printf("Could not read Horizon OC service 'hoc:clk'.\n");
-        std::printf("Result: 0x%08X\n\n", g_overrideCheck.rc);
-        std::printf("Boot normal CFW with Horizon OC / hoc.kip loaded, then retry.\n");
+        uiPrintf(5, "Could not read Horizon OC hoc:clk");
+        uiPrintf(6, "Result : 0x%08X", g_overrideCheck.rc);
+        uiPrintf(8, "Boot CFW with Horizon OC / hoc.kip");
     } else {
-        const char* ok = "\x1b[32mOK\x1b[0m";
-        const char* bad = "\x1b[31mWRONG\x1b[0m";
-        std::printf("All three Temporary Overrides must match the test target.\n\n");
-        std::printf("       Expected       Current        Status\n");
-        std::printf("CPU    %-13s  %-13s  %s\n",
-                    formatClock(g_overrideCheck.expected.cpuHz).c_str(),
-                    formatClock(g_overrideCheck.current.overrideHz[0]).c_str(),
-                    g_overrideCheck.cpuOk ? ok : bad);
+        const char* ok = "OK";
+        const char* bad = "WRONG";
+        uiPrintf(5, "Overrides        Expected       Current        Status");
+        uiPrintf(6, "CPU              %-13s %-13s %s",
+                 formatClock(g_overrideCheck.expected.cpuHz).c_str(),
+                 formatClock(g_overrideCheck.current.overrideHz[0]).c_str(),
+                 g_overrideCheck.cpuOk ? ok : bad);
+        uiPrintf(7, "GPU              %-13s %-13s %s",
+                 formatClock(g_overrideCheck.expected.gpuHz).c_str(),
+                 formatClock(g_overrideCheck.current.overrideHz[1]).c_str(),
+                 g_overrideCheck.gpuOk ? ok : bad);
+        uiPrintf(8, "RAM              %-13s %-13s %s",
+                 formatClock(g_overrideCheck.expected.ramHz).c_str(),
+                 formatClock(g_overrideCheck.current.overrideHz[2]).c_str(),
+                 g_overrideCheck.ramOk ? ok : bad);
         if (g_overrideAction == PendingOverrideAction::VminProbe) {
-            std::printf("CPU applied %-11s  %-13s  %s\n",
-                        formatClock(g_overrideCheck.expected.cpuHz).c_str(),
-                        formatClock(g_overrideCheck.current.targetHz[0]).c_str(),
-                        g_overrideCheck.cpuAppliedOk ? ok : bad);
+            uiPrintf(9, "CPU applied      %-13s %-13s %s",
+                     formatClock(g_overrideCheck.expected.cpuHz).c_str(),
+                     formatClock(g_overrideCheck.current.targetHz[0]).c_str(),
+                     g_overrideCheck.cpuAppliedOk ? ok : bad);
         }
-        std::printf("GPU    %-13s  %-13s  %s\n",
-                    formatClock(g_overrideCheck.expected.gpuHz).c_str(),
-                    formatClock(g_overrideCheck.current.overrideHz[1]).c_str(),
-                    g_overrideCheck.gpuOk ? ok : bad);
-        std::printf("RAM    %-13s  %-13s  %s\n\n",
-                    formatClock(g_overrideCheck.expected.ramHz).c_str(),
-                    formatClock(g_overrideCheck.current.overrideHz[2]).c_str(),
-                    g_overrideCheck.ramOk ? ok : bad);
-        if (g_overrideAction == PendingOverrideAction::VminProbe &&
-            g_overrideCheck.cpuOk && g_overrideCheck.gpuOk && g_overrideCheck.ramOk &&
-            !g_overrideCheck.cpuAppliedOk) {
-            std::printf("CPU Override is set, but HOC has not applied that CPU clock.\n");
-            std::printf("Disable CPU governor/automatic CPU scaling for the probe, then retry.\n");
-        } else if (g_overrideAction == PendingOverrideAction::VminProbe &&
-                   g_overrideCheck.cpuOk && g_overrideCheck.gpuOk && g_overrideCheck.ramOk &&
-                   g_overrideCheck.cpuAppliedOk && !g_overrideCheck.voltageSamplesOk) {
-            std::printf("Overrides and applied CPU clock are correct, but too few fresh\n");
-            std::printf("CPU-voltage samples were received. Keep them active and retry.\n");
-        } else {
-            std::printf("Open Horizon OC -> Temporary Overrides and correct ALL red values.\n");
-        }
+        uiPrintf(11, "Correct every WRONG value in Horizon OC");
     }
 
-    if (g_overrideAction == PendingOverrideAction::VminProbe) {
-        std::printf("\nThe VMIN measurement has NOT started.\n\n");
-        std::printf("[A] Check again + measure when correct   [B] Back\n");
-    } else {
-        std::printf("\nThe stability test has NOT started and no result was recorded.\n\n");
-        std::printf("[A] Check again + start when correct   [B] Back\n");
-    }
+    uiPrintf(14, "A : Check again / Continue");
+    uiPrintf(15, "B : Back");
     consoleUpdate(nullptr);
 }
 

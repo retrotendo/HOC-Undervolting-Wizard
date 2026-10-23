@@ -57,6 +57,18 @@ This check uses the same `appletGetAppletType()` distinction as nx-hbmenu: only 
 
 ---
 
+# New in v0.4.0-beta.9
+
+## Ultrahand-friendly right-side layout
+
+- Reworked Wizard stage screens into a compact table-style layout.
+- All values that must be entered in Horizon OC and all Temporary Override targets are displayed on the right side of the screen so they remain readable while Ultrahand/Horizon OC is open on the left.
+- The tuning workflow, reboot points, test logic, dynamic Low VMIN detection, recovery behavior and KNOWN PASS/FAIL shortcuts are unchanged from beta.8.
+- `Save KIP + Reboot` is shown only on stages where the persistent HOC value has actually changed.
+- Dynamic Low VMIN voltage probing remains internal; the UI simply tells the user which Overrides to set and when to continue.
+
+---
+
 # New in v0.4.0-beta.8
 
 ## Startup self-updater

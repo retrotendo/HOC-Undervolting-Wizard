@@ -20,11 +20,14 @@ typedef struct {
     u32 targetHz[3];
     u32 realHz[3];
     u32 overrideHz[3];
+    /* Current CPU rail voltage reported by Horizon OC, in microvolts. */
+    u32 cpuVoltageUv;
 } HocMonClocks;
 
 /*
- * Reads CPU/GPU/MEM target, real and temporary override frequencies from
- * Horizon OC. Returns a libnx/Horizon-OC Result code on failure.
+ * Reads CPU/GPU/MEM target, real and temporary override frequencies plus the
+ * current CPU rail voltage from Horizon OC. Returns a libnx/Horizon-OC Result
+ * code on failure.
  */
 Result hocmonGetClocks(HocMonClocks* out);
 

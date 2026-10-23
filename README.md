@@ -57,6 +57,15 @@ This check uses the same `appletGetAppletType()` distinction as nx-hbmenu: only 
 
 ---
 
+# New in v0.4.0-beta.10
+
+- Correct the Ultrahand-friendly panel position based on real Switch OLED testing.
+- The right-side panel now starts at console column 36 instead of 82.
+- Shorter fixed-width lines avoid wrapping at the screen edge.
+- beta.9/beta.8 tuning behavior remains unchanged.
+
+---
+
 # New in v0.4.0-beta.9
 
 ## Ultrahand-friendly right-side layout

@@ -626,7 +626,6 @@ void renderTestStage() {
         case Stage::LowVminQuick:
             uiPrintf(row++, "CPU Settings:");
             uiPrintf(row++, " - Low UV   : %d", g.lowUvGood);
-            uiPrintf(row++, "CPU Settings:");
             uiPrintf(row++, " - Low VMIN : %d mV", g.lowVminTest);
             uiPrintf(row++, "Action   : Reboot CFW");
             break;

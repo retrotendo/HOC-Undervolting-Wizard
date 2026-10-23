@@ -8,7 +8,8 @@
  *
  * Modifications for HOC Undervolting Wizard, 2026:
  * - reduced the client to read-only GetCurrentContext access;
- * - expose only CPU/GPU/MEM target, real and temporary override clocks.
+ * - expose CPU/GPU/MEM target, real and temporary override clocks;
+ * - expose the live CPU rail voltage for dynamic Low VMIN validation.
  *
  * SPDX-License-Identifier: GPL-2.0-only
  */
@@ -27,6 +28,7 @@
 #define HOCCLK_STABLE_POWER_COUNT 2
 #define HOCCLK_STABLE_PARTLOAD_COUNT 10
 #define HOCCLK_STABLE_VOLTAGE_COUNT 7
+#define HOCCLK_VOLTAGE_CPU_INDEX 2
 
 typedef struct {
     u32 freqs[HOCCLK_STABLE_MODULE_COUNT];
@@ -76,6 +78,9 @@ Result hocmonGetClocks(HocMonClocks* out)
         out->realHz[i] = ctx.stable.realFreqs[i];
         out->overrideHz[i] = ctx.stable.overrideFreqs[i];
     }
+
+    /* Horizon-OC stable voltage order: SOC, VDD2, CPU, GPU, VDDQ, display, battery. */
+    out->cpuVoltageUv = ctx.stable.voltages[HOCCLK_VOLTAGE_CPU_INDEX];
 
     return 0;
 }

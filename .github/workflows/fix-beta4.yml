@@ -1,0 +1,33 @@
+name: Fix beta4 source
+
+on:
+  push:
+    branches:
+      - beta4-guide-sync
+    paths:
+      - 'tools/fix_beta4.py'
+      - '.github/workflows/fix-beta4.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout beta4 branch
+        uses: actions/checkout@v4
+        with:
+          ref: beta4-guide-sync
+
+      - name: Repair generated source
+        run: python3 tools/fix_beta4.py
+
+      - name: Commit repaired source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add source/main.cpp
+          git commit -m "beta4: repair dynamic VMIN render logic" || exit 0
+          git push

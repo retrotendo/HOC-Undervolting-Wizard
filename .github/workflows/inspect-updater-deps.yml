@@ -1,0 +1,24 @@
+name: Inspect updater deps
+
+on:
+  push:
+    branches:
+      - beta8-self-updater
+    paths:
+      - '.github/workflows/inspect-updater-deps.yml'
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    container: devkitpro/devkita64:latest
+    steps:
+      - name: Inspect curl availability
+        shell: bash
+        run: |
+          echo '--- portlibs headers ---'
+          find /opt/devkitpro/portlibs/switch/include -maxdepth 2 -iname '*curl*' -o -iname 'curl.h' 2>/dev/null | head -50 || true
+          echo '--- portlibs libs ---'
+          find /opt/devkitpro/portlibs/switch/lib -maxdepth 1 -iname '*curl*' -o -iname '*ssl*' -o -iname '*crypto*' -o -iname '*mbedtls*' 2>/dev/null | sort || true
+          echo '--- pacman curl packages ---'
+          dkp-pacman -Ss '^switch-.*curl' || true
+          dkp-pacman -Ss '^switch-curl$' || true

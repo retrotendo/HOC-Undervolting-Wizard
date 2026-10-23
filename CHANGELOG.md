@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.4.0-beta.9
+
+- Redesign tuning-stage UI into a compact right-side table layout for use alongside the Ultrahand/Horizon OC overlay.
+- Keep Set in HOC values, Temporary Overrides, test type/duration and controls visible on the right half of the screen.
+- Preserve beta.8 tuning/test/reboot/skip logic unchanged.
+- Hide dynamic VMIN probe implementation details from the normal workflow while retaining the same automatic voltage measurement.
+- Show Save KIP + Reboot only when a persistent HOC setting was changed.
+
 ## v0.4.0-beta.8
 
 - Add an opt-in startup self-updater for public GitHub releases.

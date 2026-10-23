@@ -471,7 +471,7 @@ void writeResults() {
     f << "Nintendo Boost target: 1785 / 76.8 / 1600.\n";
 }
 
-constexpr int UI_COL = 82;
+constexpr int UI_COL = 36;
 
 void uiPrintf(int row, const char* fmt, ...) {
     std::printf("\x1b[%d;%dH", row, UI_COL);
@@ -518,7 +518,7 @@ const char* compactStepName(Stage s) {
 void title() {
     uiPrintf(1, "\x1b[36mBattery Wizard\x1b[0m");
     uiPrintf(2, "Step : %s", compactStepName(g.stage));
-    uiPrintf(3, "----------------------------------------------");
+    uiPrintf(3, "----------------------------------------");
 }
 
 void printSafeRecovery(const std::string& restoreText) {
@@ -754,7 +754,7 @@ void renderOverridePrompt() {
     consoleClear();
     uiPrintf(1, "\x1b[31mBattery Wizard - TEST BLOCKED\x1b[0m");
     uiPrintf(2, "Step : %s", compactStepName(g.stage));
-    uiPrintf(3, "----------------------------------------------");
+    uiPrintf(3, "----------------------------------------");
 
     if (!g_overrideCheck.readOk) {
         uiPrintf(5, "Could not read Horizon OC hoc:clk");
@@ -763,30 +763,29 @@ void renderOverridePrompt() {
     } else {
         const char* ok = "OK";
         const char* bad = "WRONG";
-        uiPrintf(5, "Overrides        Expected       Current        Status");
-        uiPrintf(6, "CPU              %-13s %-13s %s",
+        uiPrintf(5, "Overrides - Expected / Current");
+        uiPrintf(7, "CPU : %s / %s  %s",
                  formatClock(g_overrideCheck.expected.cpuHz).c_str(),
                  formatClock(g_overrideCheck.current.overrideHz[0]).c_str(),
                  g_overrideCheck.cpuOk ? ok : bad);
-        uiPrintf(7, "GPU              %-13s %-13s %s",
+        uiPrintf(8, "GPU : %s / %s  %s",
                  formatClock(g_overrideCheck.expected.gpuHz).c_str(),
                  formatClock(g_overrideCheck.current.overrideHz[1]).c_str(),
                  g_overrideCheck.gpuOk ? ok : bad);
-        uiPrintf(8, "RAM              %-13s %-13s %s",
+        uiPrintf(9, "RAM : %s / %s  %s",
                  formatClock(g_overrideCheck.expected.ramHz).c_str(),
                  formatClock(g_overrideCheck.current.overrideHz[2]).c_str(),
                  g_overrideCheck.ramOk ? ok : bad);
         if (g_overrideAction == PendingOverrideAction::VminProbe) {
-            uiPrintf(9, "CPU applied      %-13s %-13s %s",
-                     formatClock(g_overrideCheck.expected.cpuHz).c_str(),
+            uiPrintf(10, "Applied CPU : %s  %s",
                      formatClock(g_overrideCheck.current.targetHz[0]).c_str(),
                      g_overrideCheck.cpuAppliedOk ? ok : bad);
         }
-        uiPrintf(11, "Correct every WRONG value in Horizon OC");
+        uiPrintf(12, "Correct every WRONG value in Horizon OC");
     }
 
-    uiPrintf(14, "A : Check again / Continue");
-    uiPrintf(15, "B : Back");
+    uiPrintf(15, "A : Check again / Continue");
+    uiPrintf(16, "B : Back");
     consoleUpdate(nullptr);
 }
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.4.0-beta.10
+
+- Fix the beta.9 right-side UI start column after real-hardware validation.
+- Move the compact Wizard panel from console column 82 to column 36 so it sits immediately to the right of Ultrahand.
+- Shorten the divider and override-error table to prevent wrapping at the right edge.
+- No tuning, test, updater, VMIN, reboot or recovery logic changes.
+
 ## v0.4.0-beta.9
 
 - Redesign tuning-stage UI into a compact right-side table layout for use alongside the Ultrahand/Horizon OC overlay.

@@ -1,3 +1,10 @@
+## v0.4.0-beta.15
+- Redesign TEST BLOCKED override screen into vertical Required / Current / Status blocks.
+- Show actual Horizon OC override values for CPU/GPU/RAM.
+- Color WRONG red and OK green.
+- Keep applied CPU clock visible during VMIN floor checks.
+- No tuning or test logic changes.
+
 ## v0.4.0-beta.14
 - Fix Horizon OC menu naming: CPU UV controls are part of CPU Settings.
 - Merge CPU Max / VMIN / UV controls into one CPU Settings block in Preparation.

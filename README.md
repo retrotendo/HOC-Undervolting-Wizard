@@ -57,6 +57,16 @@ This check uses the same `appletGetAppletType()` distinction as nx-hbmenu: only 
 
 ---
 
+# New in v0.4.0-beta.15
+
+- Redesign the TEST BLOCKED override screen for readability.
+- Show each CPU/GPU/RAM override vertically with **Required**, live **Current**, and color-coded **OK / WRONG** status.
+- `Current` uses the actual Horizon OC override value; unset overrides show `NOT SET`.
+- VMIN floor checks additionally show the applied CPU clock as its own Required/Current/Status block.
+- No override detection, tuning, reboot, stress-test, VMIN or updater logic changes.
+
+---
+
 # New in v0.4.0-beta.14
 
 - Correct the Horizon OC menu hierarchy: there is no separate **CPU UV** menu.

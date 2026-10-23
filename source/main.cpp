@@ -152,40 +152,14 @@ const char* stageName(Stage s) {
         case Stage::Preparation: return "Preparation";
         case Stage::LowUvQuick: return "CPU Low UV - Quick Search";
         case Stage::LowUvLong: return "CPU Low UV - 1 Hour Validation";
-        case Stage::LowVminQuick:
-            std::printf("Keep CPU Low UV = %d.\n", g.lowUvGood);
-            std::printf("Set CPU Low VMIN = \x1b[1m%d mV\x1b[0m, Save KIP and reboot.\n", g.lowVminTest);
-            std::printf("Quick-search Overrides: CPU 510 / GPU 384 / RAM 1331\n");
-            break;
-        case Stage::LowVminLong:
-            if (g.recoveryNeeded) printSafeRecovery("CPU Low VMIN = " + std::to_string(g.lowVminGood) + " mV");
-            else std::printf("Use candidate Low VMIN = \x1b[1m%d mV\x1b[0m.\n", g.lowVminGood);
-            std::printf("Dynamic floor sweep: 510 MHz. CPU voltage is read from HOC.\n");
-            std::printf("Overrides: CPU 510 / GPU 384 / RAM 1331\n");
-            break;
-        case Stage::LowVminSweep612:
-            std::printf("Dynamic floor sweep: 612 MHz.\nOverrides: CPU 612 / GPU 384 / RAM 1331\n");
-            break;
-        case Stage::LowVminSweep714:
-            std::printf("Dynamic floor sweep: 714 MHz.\nOverrides: CPU 714 / GPU 384 / RAM 1331\n");
-            break;
-        case Stage::LowVminValidate816:
-            std::printf("Dynamic floor sweep: 816 MHz.\nOverrides: CPU 816 / GPU 384 / RAM 1331\n");
-            break;
-        case Stage::LowVminSweep918:
-            std::printf("Dynamic floor sweep: 918 MHz.\nOverrides: CPU 918 / GPU 384 / RAM 1331\n");
-            break;
-        case Stage::LowVminValidate1020:
-            std::printf("Dynamic floor sweep: 1020 MHz.\nOverrides: CPU 1020 / GPU 384 / RAM 1331\n");
-            break;
-        case Stage::LowVminFinalLong:
-            std::printf("Detected highest CPU clock still on the VMIN floor:\n");
-            std::printf("  %u MHz at about %d mV\n", (g.vminFloorHz ? g.vminFloorHz : CLOCK_CPU_VMIN_510_HZ) / 1000000U,
-                        g.vminFloorObservedMv ? g.vminFloorObservedMv : g.lowVminGood);
-            std::printf("Run the 1-hour confirmation at that clock.\n");
-            std::printf("GPU 384 / RAM 1331 remain fixed.\n");
-            std::printf("After PASS also check Home, Sleep/Wake, game launch/close.\n");
-            break;
+        case Stage::LowVminQuick: return "CPU Low VMIN - Quick Search @ 510";
+        case Stage::LowVminLong: return "CPU Low VMIN - Floor Sweep @ 510";
+        case Stage::LowVminSweep612: return "CPU Low VMIN - Floor Sweep @ 612";
+        case Stage::LowVminSweep714: return "CPU Low VMIN - Floor Sweep @ 714";
+        case Stage::LowVminValidate816: return "CPU Low VMIN - Floor Sweep @ 816";
+        case Stage::LowVminSweep918: return "CPU Low VMIN - Floor Sweep @ 918";
+        case Stage::LowVminValidate1020: return "CPU Low VMIN - Floor Sweep @ 1020";
+        case Stage::LowVminFinalLong: return "CPU Low VMIN - Dynamic 1 Hour Validation";
         case Stage::VddqQuick: return "VDDQ - Quick Search";
         case Stage::VddqLong: return "VDDQ - 1 Hour Validation";
         case Stage::Vdd2Quick: return "VDD2 - Quick Search";
@@ -515,25 +489,36 @@ void renderTestStage() {
         case Stage::LowVminQuick:
             std::printf("Keep CPU Low UV = %d.\n", g.lowUvGood);
             std::printf("Set CPU Low VMIN = \x1b[1m%d mV\x1b[0m, Save KIP and reboot.\n", g.lowVminTest);
-            if (g.lowVminTest < 590) std::printf("\x1b[33mAdvanced low-VMIN range. Wizard floor: 570 mV.\x1b[0m\n");
-            std::printf("Quick-search Overrides: CPU 612 / GPU 384 / RAM 1331\n");
+            std::printf("Quick-search Overrides: CPU 510 / GPU 384 / RAM 1331\n");
             break;
         case Stage::LowVminLong:
             if (g.recoveryNeeded) printSafeRecovery("CPU Low VMIN = " + std::to_string(g.lowVminGood) + " mV");
-            else std::printf("Use CPU Low VMIN = \x1b[1m%d mV\x1b[0m, Save KIP and reboot.\n", g.lowVminGood);
-            std::printf("Final VMIN validation 1/3.\n");
-            std::printf("Overrides: CPU 612 / GPU 384 / RAM 1331\n");
+            else std::printf("Use candidate Low VMIN = \x1b[1m%d mV\x1b[0m.\n", g.lowVminGood);
+            std::printf("Dynamic floor sweep: 510 MHz. CPU voltage is read from HOC.\n");
+            std::printf("Overrides: CPU 510 / GPU 384 / RAM 1331\n");
+            break;
+        case Stage::LowVminSweep612:
+            std::printf("Dynamic floor sweep: 612 MHz.\nOverrides: CPU 612 / GPU 384 / RAM 1331\n");
+            break;
+        case Stage::LowVminSweep714:
+            std::printf("Dynamic floor sweep: 714 MHz.\nOverrides: CPU 714 / GPU 384 / RAM 1331\n");
             break;
         case Stage::LowVminValidate816:
-            std::printf("Keep CPU Low VMIN = \x1b[1m%d mV\x1b[0m.\n", g.lowVminGood);
-            std::printf("Final VMIN validation 2/3. No KIP change required.\n");
-            std::printf("Overrides: CPU 816 / GPU 384 / RAM 1331\n");
+            std::printf("Dynamic floor sweep: 816 MHz.\nOverrides: CPU 816 / GPU 384 / RAM 1331\n");
+            break;
+        case Stage::LowVminSweep918:
+            std::printf("Dynamic floor sweep: 918 MHz.\nOverrides: CPU 918 / GPU 384 / RAM 1331\n");
             break;
         case Stage::LowVminValidate1020:
-            std::printf("Keep CPU Low VMIN = \x1b[1m%d mV\x1b[0m.\n", g.lowVminGood);
-            std::printf("Final VMIN validation 3/3. No KIP change required.\n");
-            std::printf("Overrides: CPU 1020 / GPU 384 / RAM 1331\n");
-            std::printf("After PASS also check normal Sleep/Wake transitions.\n");
+            std::printf("Dynamic floor sweep: 1020 MHz.\nOverrides: CPU 1020 / GPU 384 / RAM 1331\n");
+            break;
+        case Stage::LowVminFinalLong:
+            std::printf("Detected highest CPU clock still on the VMIN floor:\n");
+            std::printf("  %u MHz at about %d mV\n", (g.vminFloorHz ? g.vminFloorHz : CLOCK_CPU_VMIN_510_HZ) / 1000000U,
+                        g.vminFloorObservedMv ? g.vminFloorObservedMv : g.lowVminGood);
+            std::printf("Run the 1-hour confirmation at that clock.\n");
+            std::printf("GPU 384 / RAM 1331 remain fixed.\n");
+            std::printf("After PASS also check Home, Sleep/Wake, game launch/close.\n");
             break;
         case Stage::VddqQuick:
             std::printf("Keep VDD2 at stock %s.\n", formatVdd2(STOCK_VDD2_UV).c_str());

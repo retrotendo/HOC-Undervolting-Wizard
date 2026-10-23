@@ -2,6 +2,7 @@
 
 #include "stress_tests.hpp"
 #include "hoc_monitor.h"
+#include "updater.hpp"
 
 #include <algorithm>
 #include <cstdio>
@@ -1024,7 +1025,7 @@ void runCurrentTest() {
 
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
     consoleInit(nullptr);
     padConfigureInput(1, HidNpadStyleSet_NpadStandard);
     PadState pad;
@@ -1062,6 +1063,14 @@ int main() {
             svcSleepThread(20'000'000);
         }
 
+        consoleExit(nullptr);
+        return 0;
+    }
+
+    // Full Application Mode only: check the public GitHub releases before
+    // touching Wizard state. Network/update failures are non-fatal and simply
+    // continue with the currently installed build.
+    if (updater::startupCheckAndPrompt(pad, argc, argv)) {
         consoleExit(nullptr);
         return 0;
     }

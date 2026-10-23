@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.4.0-beta.11
+
+- Make startup update checks resilient to GitHub API failures.
+- Add a lightweight public `UPDATE.txt` manifest as a second update source.
+- Keep the GitHub Releases API as a fallback and choose the newest version returned by either source.
+- Show update-check errors instead of silently continuing, with A = Retry and B = Continue.
+- Send no-cache headers for update metadata requests.
+- No tuning/test/UI-position logic changes from beta.10.
+
 ## v0.4.0-beta.10
 
 - Fix the beta.9 right-side UI start column after real-hardware validation.

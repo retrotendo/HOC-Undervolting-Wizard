@@ -57,6 +57,15 @@ This check uses the same `appletGetAppletType()` distinction as nx-hbmenu: only 
 
 ---
 
+# New in v0.4.0-beta.11
+
+- More robust startup updater with two independent metadata sources.
+- A simple public `UPDATE.txt` manifest avoids depending only on the unauthenticated GitHub Releases API.
+- Update-check failures are shown on screen and can be retried instead of being silently ignored.
+- beta.10 tuning and right-side UI behavior are unchanged.
+
+---
+
 # New in v0.4.0-beta.10
 
 - Correct the Ultrahand-friendly panel position based on real Switch OLED testing.

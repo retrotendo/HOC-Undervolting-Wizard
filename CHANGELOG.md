@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.4.0-beta.5
+
+- Changed the dynamic CPU Low VMIN crossover sweep from repeated 1-minute stress tests to a fast **measurement-only floor probe**.
+- Floor probing still verifies all three Horizon OC Temporary Overrides before every step.
+- At each probe point, the Wizard samples the live CPU rail voltage **7 times** and uses the **median** of valid samples so a stale single HOC poll cannot decide the crossover.
+- Probe sequence remains **510 -> 612 -> 714 -> 816 -> 918 -> 1020 MHz** with GPU 384 / RAM 1331.2.
+- The Wizard still selects the **highest CPU clock actually operating on the configured Low VMIN floor** and runs the single 1-hour CPU confirmation there.
+- Lower CPU clocks on the same voltage floor are no longer stress-tested redundantly; transition checks such as Home, Sleep/Wake and game launch/close remain part of final validation.
+- `[+] KNOWN PASS / SKIP` remains available for real test stages. During VMIN floor-probe stages, pressing `+` performs the required live-voltage measurement instead of blindly skipping it.
+- `[X] KNOWN FAIL / SKIP` is disabled during measurement-only VMIN floor-probe stages because a voltage probe itself is not a stability PASS/FAIL test.
+- Override-block screens now distinguish between a blocked stress test and a blocked VMIN measurement.
+
 ## v0.4.0-beta.4
 
 - Synced the Wizard with the revised Battery Tuning guide.

@@ -3,6 +3,7 @@
 #include "stress_tests.hpp"
 #include "hoc_monitor.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -134,7 +135,9 @@ struct OverrideCheckState {
     bool ramOk = false;
 };
 
+enum class PendingOverrideAction { StartTest, VminProbe };
 bool g_overridePrompt = false;
+PendingOverrideAction g_overrideAction = PendingOverrideAction::StartTest;
 OverrideCheckState g_overrideCheck;
 
 std::string formatVdd2(int uv) {
@@ -191,12 +194,6 @@ bool testPlan(Stage s, stress::Kind& kind, int& seconds) {
     switch (s) {
         case Stage::LowUvQuick:
         case Stage::LowVminQuick:
-        case Stage::LowVminLong:
-        case Stage::LowVminSweep612:
-        case Stage::LowVminSweep714:
-        case Stage::LowVminValidate816:
-        case Stage::LowVminSweep918:
-        case Stage::LowVminValidate1020:
         case Stage::HighUvQuick:
             kind = stress::Kind::Cpu; seconds = 60; return true;
         case Stage::LowUvLong:
@@ -310,6 +307,48 @@ bool checkAllOverrides(Stage s) {
     g_overrideCheck.gpuOk = clockMatches(g_overrideCheck.current.overrideHz[1], g_overrideCheck.expected.gpuHz);
     g_overrideCheck.ramOk = clockMatches(g_overrideCheck.current.overrideHz[2], g_overrideCheck.expected.ramHz);
     return g_overrideCheck.cpuOk && g_overrideCheck.gpuOk && g_overrideCheck.ramOk;
+}
+
+// VMIN floor probing is measurement-only. Read several HOC context samples so a
+// stale single poll cannot decide the floor crossover. The median CPU rail
+// voltage from matching override samples is used.
+bool sampleVminVoltage(Stage s) {
+    if (!checkAllOverrides(s)) return false;
+
+    u32 samples[7] = {};
+    int count = 0;
+    HocMonClocks latest = g_overrideCheck.current;
+
+    for (int i = 0; i < 7; ++i) {
+        HocMonClocks cur{};
+        Result rc = hocmonGetClocks(&cur);
+        if (R_SUCCEEDED(rc) &&
+            clockMatches(cur.overrideHz[0], g_overrideCheck.expected.cpuHz) &&
+            clockMatches(cur.overrideHz[1], g_overrideCheck.expected.gpuHz) &&
+            clockMatches(cur.overrideHz[2], g_overrideCheck.expected.ramHz) &&
+            cur.cpuVoltageUv != 0) {
+            samples[count++] = cur.cpuVoltageUv;
+            latest = cur;
+        }
+        svcSleepThread(120'000'000);
+    }
+
+    if (count < 3) {
+        // Preserve the latest context for the Expected/Current error screen.
+        g_overrideCheck.current = latest;
+        g_overrideCheck.readOk = true;
+        g_overrideCheck.cpuOk = clockMatches(latest.overrideHz[0], g_overrideCheck.expected.cpuHz);
+        g_overrideCheck.gpuOk = clockMatches(latest.overrideHz[1], g_overrideCheck.expected.gpuHz);
+        g_overrideCheck.ramOk = clockMatches(latest.overrideHz[2], g_overrideCheck.expected.ramHz);
+        return false;
+    }
+
+    std::sort(samples, samples + count);
+    latest.cpuVoltageUv = samples[count / 2];
+    g_overrideCheck.current = latest;
+    g_overrideCheck.readOk = true;
+    g_overrideCheck.cpuOk = g_overrideCheck.gpuOk = g_overrideCheck.ramOk = true;
+    return true;
 }
 
 void ensureDir() {
@@ -469,6 +508,8 @@ void renderPreparation() {
     std::printf("[A] Setup done - start tuning   [B] Exit   [-] Reset\n");
 }
 
+bool isVminSweepStage(Stage st);
+
 void renderTestStage() {
     title();
     stress::Kind kind;
@@ -582,6 +623,15 @@ void renderTestStage() {
             break;
     }
 
+    if (isVminSweepStage(g.stage)) {
+        std::printf("\n\x1b[36mVMIN FLOOR PROBE - NO STRESS TEST\x1b[0m\n");
+        std::printf("CPU + GPU + RAM Overrides are verified first.\n");
+        std::printf("The Wizard then samples the live CPU rail several times\n");
+        std::printf("and uses the median voltage to detect the floor crossover.\n\n");
+        std::printf("\x1b[32m[A] VERIFY OVERRIDES + MEASURE\x1b[0m   [B] Exit\n");
+        return;
+    }
+
     std::printf("\nBuilt-in test: \x1b[1m%s\x1b[0m\n", stress::kindName(kind));
     std::printf("Duration: \x1b[1m%s\x1b[0m\n", seconds == 60 ? "1 minute" : "1 hour");
     std::printf("Errors/mismatches are detected automatically.\n");
@@ -658,8 +708,13 @@ void renderOverridePrompt() {
         std::printf("Open Horizon OC -> Temporary Overrides and correct ALL red values.\n");
     }
 
-    std::printf("\nThe stability test has NOT started and no result was recorded.\n\n");
-    std::printf("[A] Check again + start when correct   [B] Back\n");
+    if (g_overrideAction == PendingOverrideAction::VminProbe) {
+        std::printf("\nThe VMIN measurement has NOT started.\n\n");
+        std::printf("[A] Check again + measure when correct   [B] Back\n");
+    } else {
+        std::printf("\nThe stability test has NOT started and no result was recorded.\n\n");
+        std::printf("[A] Check again + start when correct   [B] Back\n");
+    }
     consoleUpdate(nullptr);
 }
 
@@ -769,23 +824,23 @@ void handlePass() {
             if (g.lowVminTest <= LOW_VMIN_MIN_MV) { enterLowVminLong(false); return; }
             g.lowVminTest -= LOW_VMIN_STEP_MV; break;
         case Stage::LowVminLong:
-            if (!g_manualPass && !g_lastVminAtFloor) { g.vminFloorHz = CLOCK_CPU_VMIN_510_HZ; g.vminFloorObservedMv = g.lowVminGood; g.stage = Stage::LowVminFinalLong; }
+            if (!g_lastVminAtFloor) { g.vminFloorHz = CLOCK_CPU_VMIN_510_HZ; g.vminFloorObservedMv = g.lowVminGood; g.stage = Stage::LowVminFinalLong; }
             else g.stage = Stage::LowVminSweep612;
             break;
         case Stage::LowVminSweep612:
-            if (!g_manualPass && !g_lastVminAtFloor) g.stage = Stage::LowVminFinalLong;
+            if (!g_lastVminAtFloor) g.stage = Stage::LowVminFinalLong;
             else g.stage = Stage::LowVminSweep714;
             break;
         case Stage::LowVminSweep714:
-            if (!g_manualPass && !g_lastVminAtFloor) g.stage = Stage::LowVminFinalLong;
+            if (!g_lastVminAtFloor) g.stage = Stage::LowVminFinalLong;
             else g.stage = Stage::LowVminValidate816;
             break;
         case Stage::LowVminValidate816:
-            if (!g_manualPass && !g_lastVminAtFloor) g.stage = Stage::LowVminFinalLong;
+            if (!g_lastVminAtFloor) g.stage = Stage::LowVminFinalLong;
             else g.stage = Stage::LowVminSweep918;
             break;
         case Stage::LowVminSweep918:
-            if (!g_manualPass && !g_lastVminAtFloor) g.stage = Stage::LowVminFinalLong;
+            if (!g_lastVminAtFloor) g.stage = Stage::LowVminFinalLong;
             else g.stage = Stage::LowVminValidate1020;
             break;
         case Stage::LowVminValidate1020:
@@ -875,6 +930,21 @@ void handleFail(bool didNotBoot) {
     saveState();
 }
 
+void runVminProbe() {
+    if (!isVminSweepStage(g.stage)) return;
+
+    g_overrideAction = PendingOverrideAction::VminProbe;
+    if (!sampleVminVoltage(g.stage)) {
+        g_overridePrompt = true;
+        return;
+    }
+    g_overridePrompt = false;
+
+    const Stage probedStage = g.stage;
+    recordVminObservation(probedStage);
+    handlePass();
+}
+
 void runCurrentTest() {
     stress::Kind kind;
     int seconds = 0;
@@ -882,6 +952,7 @@ void runCurrentTest() {
 
     // Hard pre-flight: every built-in test requires all three expected
     // Horizon OC Temporary Overrides. A missing/wrong override blocks the test.
+    g_overrideAction = PendingOverrideAction::StartTest;
     if (!checkAllOverrides(g.stage)) {
         g_overridePrompt = true;
         return;
@@ -977,7 +1048,8 @@ int main() {
         if (g_overridePrompt) {
             if (k & HidNpadButton_A) {
                 g_overridePrompt = false;
-                runCurrentTest();
+                if (g_overrideAction == PendingOverrideAction::VminProbe) runVminProbe();
+                else runCurrentTest();
                 redraw = true;
             } else if (k & HidNpadButton_B) {
                 g_overridePrompt = false;
@@ -1019,27 +1091,32 @@ int main() {
             handleFail(true);
             redraw = true;
         } else if (k & HidNpadButton_Plus) {
-            stress::Kind skipKind;
-            int skipSeconds = 0;
-            if (testPlan(g.stage, skipKind, skipSeconds)) {
-                g_manualPass = true;
-                g_lastVminAtFloor = true;
-                handlePass();
-                g_manualPass = false;
+            if (isVminSweepStage(g.stage)) {
+                runVminProbe();
                 redraw = true;
+            } else {
+                stress::Kind skipKind;
+                int skipSeconds = 0;
+                if (testPlan(g.stage, skipKind, skipSeconds)) {
+                    g_manualPass = true;
+                    handlePass();
+                    g_manualPass = false;
+                    redraw = true;
+                }
             }
         } else if (k & HidNpadButton_X) {
-            if (g.stage != Stage::Preparation && g.stage != Stage::Complete) {
+            if (!isVminSweepStage(g.stage) && g.stage != Stage::Preparation && g.stage != Stage::Complete) {
                 handleFail(false);
                 redraw = true;
             }
         } else if (k & HidNpadButton_A) {
-            stress::Kind kind;
-            int seconds = 0;
-            if (testPlan(g.stage, kind, seconds)) {
-                runCurrentTest();
+            if (isVminSweepStage(g.stage)) {
+                runVminProbe();
             } else {
-                handlePass();
+                stress::Kind kind;
+                int seconds = 0;
+                if (testPlan(g.stage, kind, seconds)) runCurrentTest();
+                else handlePass();
             }
             redraw = true;
         }

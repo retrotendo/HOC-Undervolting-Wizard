@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.4.0-beta.7
+
+- Use only the exact Battery-guide baseline values on the Preparation screen.
+- Remove alternative "known-stable" and "known-working" setup values.
+- Keep previously validated user values supported through KNOWN PASS / SKIP at the relevant test stages.
+- Clarify Full Application Mode as required rather than recommended.
+
 ## v0.4.0-beta.6
 
 - Block startup completely when hbmenu launches the Wizard in Applet Mode.

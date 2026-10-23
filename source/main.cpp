@@ -455,7 +455,7 @@ void writeResults() {
     std::ofstream f(RESULTS, std::ios::trunc);
     if (!f) return;
     f << "HOC Undervolting Wizard - Final Results\n\n";
-    f << "CPU UV Table: user-selected (recommended: 1683 MHz Tbreak)\n";
+    f << "CPU UV Table: 1683 MHz Tbreak\n";
     f << "CPU Low UV: " << g.lowUvGood << "\n";
     f << "CPU Low VMIN: " << g.lowVminGood << " mV\n";
     f << "RAM VDDQ: " << g.vddqGood << " mV\n";
@@ -498,13 +498,13 @@ void renderPreparation() {
     std::printf("  Uncapped Clocks : OFF\n");
     std::printf("  HP Mode          : OFF\n");
     std::printf("  RAM Max Clock    : 1600 MHz\n");
-    std::printf("  VDD2             : 1175 mV or known-stable lower value\n");
-    std::printf("  VDDQ             : 600 mV or known-stable lower value\n\n");
+    std::printf("  VDD2             : 1175 mV\n");
+    std::printf("  VDDQ             : 600 mV\n\n");
     std::printf("Horizon OC - CPU:\n");
     std::printf("  CPU Max Clock    : LOWEST SELECTABLE (currently 1963 MHz)\n");
-    std::printf("  CPU UV Table     : 1683 MHz Tbreak or known-working table\n");
-    std::printf("  Low UV / High UV : 0 / 0, or known-stable values\n");
-    std::printf("  Low VMIN         : 620 mV or known-stable value\n");
+    std::printf("  CPU UV Table     : 1683 MHz Tbreak\n");
+    std::printf("  Low UV / High UV : 0 / 0\n");
+    std::printf("  Low VMIN         : 620 mV\n");
     std::printf("  High VMIN        : 750 mV\n\n");
     std::printf("HOC Toolkit:\n");
     std::printf("  CPU Boost Clock  : LOWEST SELECTABLE (stock target 1785 MHz)\n\n");

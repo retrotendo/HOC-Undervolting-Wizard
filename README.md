@@ -57,6 +57,15 @@ This check uses the same `appletGetAppletType()` distinction as nx-hbmenu: only 
 
 ---
 
+# New in v0.4.0-beta.7
+
+- Preparation now shows only the exact Battery-guide starting values.
+- Removed all "or known-stable/known-working value" alternatives from the setup screen and setup documentation.
+- Previously validated personal values are handled only through **KNOWN PASS / SKIP** during the relevant tuning stages.
+- Clarified that Full Application Mode is required, matching the beta.6 startup blocker.
+
+---
+
 # New in v0.4.0-beta.6
 
 - hard startup block when Applet Mode is detected
@@ -144,7 +153,7 @@ Final results are stored at:
 - Horizon OC installed and working
 - Hekate strongly recommended for boot-failure recovery
 
-For RAM testing, Homebrew Menu **title takeover / full application mode** is strongly recommended.
+The Wizard requires Homebrew Menu **title takeover / Full Application Mode**. Applet Mode is blocked at startup.
 
 ## Install
 
@@ -181,7 +190,7 @@ If a tuning value prevents normal CFW from booting:
 
 # Battery starting setup
 
-Prepare the Battery profile before tuning. Conservative defaults may be replaced by values already proven stable on your own console.
+Prepare the Battery profile before tuning using the exact guide starting values below. If you already know stable values, use the Wizard's KNOWN PASS / SKIP controls during the corresponding tuning stages instead of changing the starting baseline.
 
 ## Horizon OC
 
@@ -193,17 +202,17 @@ Prepare the Battery profile before tuning. Conservative defaults may be replaced
 
 - **HP Mode: OFF**
 - **RAM Max Clock: 1600 MHz**
-- **VDD2: 1175 mV**, or a known-stable lower value
-- **VDDQ: 600 mV**, or a known-stable lower value
+- **VDD2: 1175 mV**
+- **VDDQ: 600 mV**
 
 ### CPU
 
 - **CPU Max Clock: lowest selectable value**
   - current Mariko HOC builds show **1963 MHz** as the lowest selectable CPU Max Clock
-- **CPU UV Table: 1683 MHz Tbreak**, or another known-working table
-- **Low UV: 0**, or a known-stable value
-- **High UV: 0**, or a known-stable value
-- **Low VMIN: 620 mV**, or a known-stable value
+- **CPU UV Table: 1683 MHz Tbreak**
+- **Low UV: 0**
+- **High UV: 0**
+- **Low VMIN: 620 mV**
 - **High VMIN: 750 mV**
 
 ## HOC Toolkit

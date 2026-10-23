@@ -1,19 +1,35 @@
 # Changelog
 
+## v0.4.0-beta.4
+
+- Synced the Wizard with the revised Battery Tuning guide.
+- Added **[+] KNOWN PASS / SKIP** so already-proven settings can be accepted without rerunning every built-in test.
+- Kept **[X] KNOWN FAIL / SKIP** for manually known failures.
+- Corrected preparation guidance: CPU Max Clock is the **lowest selectable Horizon OC value** (currently 1963 MHz on Mariko), while Nintendo CPU Boost is handled separately through HOC Toolkit.
+- Changed the recommended CPU UV table guidance to **1683 MHz Tbreak** (or another user-known stable table).
+- Kept CPU Low VMIN at a **620 mV conservative baseline** with a hard Wizard floor of **570 mV**.
+- Reworked Low VMIN tuning to use **dynamic floor detection** instead of assuming the same crossover frequency on every console.
+- The Wizard now reads Horizon OC's live CPU rail voltage from `hoc:clk` during the Low VMIN sweep.
+- Low VMIN quick search now runs at **510 / 384 / 1331.2 MHz**.
+- After the VMIN candidate is found, the Wizard sweeps CPU **510 -> 612 -> 714 -> 816 -> 918 -> 1020 MHz** and automatically remembers the highest CPU clock still operating at the configured VMIN floor (within one 5 mV PMIC step).
+- The long 1-hour Low VMIN confirmation is then run only at that dynamically detected highest floor-bound CPU clock.
+- Added a separate **VDDQ + VDD2 combined RAM validation at 1785 / 76.8 / 1600** before normal-handheld RAM validation.
+- Changed the Wizard's VDDQ search interval to **10 mV** to match the simplified guide workflow (two 5 mV Horizon OC UI steps).
+- Added guide-style RAM-pair recovery: first retry combined RAM validation with VDDQ +10 mV; if it still fails, restore VDDQ and try VDD2 +12.5 mV.
+- Results now record the dynamically detected highest Low VMIN floor clock when available.
+
 ## v0.4.0-beta.3
 
 - Changed CPU Low VMIN hard floor from 550 mV to **570 mV**.
-- Moved Low VMIN quick search to **612 / 384 / 1331.2 MHz** so the floor is exercised directly.
+- Moved Low VMIN quick search to **612 / 384 / 1331.2 MHz**.
 - Added sequential 1-hour Low VMIN validation at **612 -> 816 -> 1020 MHz**.
-- CPU/GPU/RAM Temporary Overrides are verified before every one of those validation runs.
-- Any failure in the three-stage VMIN validation raises Low VMIN by **5 mV** and restarts validation at 612 MHz.
+- CPU/GPU/RAM Temporary Overrides are verified before every validation run.
+- Any failure in the three-stage VMIN validation raises Low VMIN by **5 mV** and restarts validation.
 - Existing beta.2 state files are clamped to the new 570 mV minimum on load.
 
 ## v0.4.0-beta.2
 
 - Added the full Battery-guide starting setup to the Wizard preparation screen.
-- Added CPU Max/Boost 1785 MHz, GPU Max 384 MHz and RAM Max 1600 MHz stock limits.
-- Added Uncapped Clocks OFF, HP Mode OFF, Overwrite Boost Mode OFF and Auto CPU RAM OC OFF preparation guidance.
 - Added a hard Horizon OC pre-flight before every built-in test.
 - CPU, GPU and RAM Temporary Overrides are all read from `hoc:clk` and compared with the exact test target.
 - A missing/wrong override blocks the test and shows Expected vs Current values; no PASS/FAIL is recorded.

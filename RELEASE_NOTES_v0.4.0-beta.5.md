@@ -17,7 +17,7 @@ For every probe point the Wizard:
 1. verifies CPU + GPU + RAM Temporary Overrides;
 2. reads Horizon OC's live CPU rail voltage multiple times;
 3. keeps valid readings with the requested overrides active;
-4. uses the **median of 7 samples**;
+4. uses the **median of 3 samples**;
 5. records the highest CPU clock still within one 5 mV PMIC step of the configured Low VMIN.
 
 The actual **1-hour CPU stability confirmation** is then run once at that highest floor-bound CPU clock. This avoids redundant long/short testing at lower clocks that use the same voltage floor.

@@ -73,7 +73,7 @@ After the Wizard finds a Low VMIN candidate it performs a short ascending sweep:
 
 GPU remains **384 MHz** and RAM remains **1331.2 MHz**.
 
-At each step the Wizard verifies CPU/GPU/RAM overrides and reads the **live CPU rail voltage reported by Horizon OC**. The probe takes **7 context samples** and uses the **median of valid readings** so a single stale HOC poll does not decide the crossover. It remembers the highest CPU frequency still operating at the configured VMIN floor (within one 5 mV PMIC step).
+At each step the Wizard verifies CPU/GPU/RAM overrides and reads the **live CPU rail voltage reported by Horizon OC**. The probe takes **3 context samples** and uses the **median of valid readings** so a single stale HOC poll does not decide the crossover. It remembers the highest CPU frequency still operating at the configured VMIN floor (within one 5 mV PMIC step).
 
 These sweep points are **measurement-only**. They do not each run another 1-minute stress test. The actual stability confirmation is concentrated at the highest detected floor-bound CPU clock.
 

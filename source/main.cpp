@@ -315,11 +315,11 @@ bool checkAllOverrides(Stage s) {
 bool sampleVminVoltage(Stage s) {
     if (!checkAllOverrides(s)) return false;
 
-    u32 samples[7] = {};
+    u32 samples[3] = {};
     int count = 0;
     HocMonClocks latest = g_overrideCheck.current;
 
-    for (int i = 0; i < 7; ++i) {
+    for (int i = 0; i < 3; ++i) {
         HocMonClocks cur{};
         Result rc = hocmonGetClocks(&cur);
         if (R_SUCCEEDED(rc) &&
@@ -330,7 +330,7 @@ bool sampleVminVoltage(Stage s) {
             samples[count++] = cur.cpuVoltageUv;
             latest = cur;
         }
-        svcSleepThread(120'000'000);
+        svcSleepThread(1'100'000'000);
     }
 
     if (count < 3) {

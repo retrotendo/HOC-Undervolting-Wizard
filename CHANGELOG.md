@@ -4,7 +4,7 @@
 
 - Changed the dynamic CPU Low VMIN crossover sweep from repeated 1-minute stress tests to a fast **measurement-only floor probe**.
 - Floor probing still verifies all three Horizon OC Temporary Overrides before every step.
-- At each probe point, the Wizard samples the live CPU rail voltage **7 times** and uses the **median** of valid samples so a stale single HOC poll cannot decide the crossover.
+- At each probe point, the Wizard samples the live CPU rail voltage **3 times with 1.1 seconds between reads** and uses the **median** of valid samples so a stale single HOC poll cannot decide the crossover.
 - Probe sequence remains **510 -> 612 -> 714 -> 816 -> 918 -> 1020 MHz** with GPU 384 / RAM 1331.2.
 - The Wizard still selects the **highest CPU clock actually operating on the configured Low VMIN floor** and runs the single 1-hour CPU confirmation there.
 - Lower CPU clocks on the same voltage floor are no longer stress-tested redundantly; transition checks such as Home, Sleep/Wake and game launch/close remain part of final validation.

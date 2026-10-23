@@ -1,0 +1,27 @@
+name: Apply beta11 updater robustness fix
+
+on:
+  push:
+    branches:
+      - beta11-updater-robust
+    paths:
+      - 'tools/apply_beta11_updater_fix.py'
+      - '.github/workflows/apply-beta11-updater-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: beta11-updater-robust
+      - run: python3 tools/apply_beta11_updater_fix.py
+      - run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add source/updater.cpp Makefile UPDATE.txt README.md CHANGELOG.md
+          git commit -m "beta11: make updater resilient" || exit 0
+          git push origin beta11-updater-robust

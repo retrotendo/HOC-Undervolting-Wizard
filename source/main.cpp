@@ -133,6 +133,8 @@ struct OverrideCheckState {
     bool cpuOk = false;
     bool gpuOk = false;
     bool ramOk = false;
+    bool cpuAppliedOk = true;
+    bool voltageSamplesOk = true;
 };
 
 enum class PendingOverrideAction { StartTest, VminProbe };
@@ -326,6 +328,7 @@ bool sampleVminVoltage(Stage s) {
             clockMatches(cur.overrideHz[0], g_overrideCheck.expected.cpuHz) &&
             clockMatches(cur.overrideHz[1], g_overrideCheck.expected.gpuHz) &&
             clockMatches(cur.overrideHz[2], g_overrideCheck.expected.ramHz) &&
+            clockMatches(cur.targetHz[0], g_overrideCheck.expected.cpuHz) &&
             cur.cpuVoltageUv != 0) {
             samples[count++] = cur.cpuVoltageUv;
             latest = cur;
@@ -340,6 +343,8 @@ bool sampleVminVoltage(Stage s) {
         g_overrideCheck.cpuOk = clockMatches(latest.overrideHz[0], g_overrideCheck.expected.cpuHz);
         g_overrideCheck.gpuOk = clockMatches(latest.overrideHz[1], g_overrideCheck.expected.gpuHz);
         g_overrideCheck.ramOk = clockMatches(latest.overrideHz[2], g_overrideCheck.expected.ramHz);
+        g_overrideCheck.cpuAppliedOk = clockMatches(latest.targetHz[0], g_overrideCheck.expected.cpuHz);
+        g_overrideCheck.voltageSamplesOk = false;
         return false;
     }
 
@@ -348,6 +353,8 @@ bool sampleVminVoltage(Stage s) {
     g_overrideCheck.current = latest;
     g_overrideCheck.readOk = true;
     g_overrideCheck.cpuOk = g_overrideCheck.gpuOk = g_overrideCheck.ramOk = true;
+    g_overrideCheck.cpuAppliedOk = true;
+    g_overrideCheck.voltageSamplesOk = true;
     return true;
 }
 
@@ -697,6 +704,12 @@ void renderOverridePrompt() {
                     formatClock(g_overrideCheck.expected.cpuHz).c_str(),
                     formatClock(g_overrideCheck.current.overrideHz[0]).c_str(),
                     g_overrideCheck.cpuOk ? ok : bad);
+        if (g_overrideAction == PendingOverrideAction::VminProbe) {
+            std::printf("CPU applied %-11s  %-13s  %s\n",
+                        formatClock(g_overrideCheck.expected.cpuHz).c_str(),
+                        formatClock(g_overrideCheck.current.targetHz[0]).c_str(),
+                        g_overrideCheck.cpuAppliedOk ? ok : bad);
+        }
         std::printf("GPU    %-13s  %-13s  %s\n",
                     formatClock(g_overrideCheck.expected.gpuHz).c_str(),
                     formatClock(g_overrideCheck.current.overrideHz[1]).c_str(),
@@ -705,7 +718,19 @@ void renderOverridePrompt() {
                     formatClock(g_overrideCheck.expected.ramHz).c_str(),
                     formatClock(g_overrideCheck.current.overrideHz[2]).c_str(),
                     g_overrideCheck.ramOk ? ok : bad);
-        std::printf("Open Horizon OC -> Temporary Overrides and correct ALL red values.\n");
+        if (g_overrideAction == PendingOverrideAction::VminProbe &&
+            g_overrideCheck.cpuOk && g_overrideCheck.gpuOk && g_overrideCheck.ramOk &&
+            !g_overrideCheck.cpuAppliedOk) {
+            std::printf("CPU Override is set, but HOC has not applied that CPU clock.\n");
+            std::printf("Disable CPU governor/automatic CPU scaling for the probe, then retry.\n");
+        } else if (g_overrideAction == PendingOverrideAction::VminProbe &&
+                   g_overrideCheck.cpuOk && g_overrideCheck.gpuOk && g_overrideCheck.ramOk &&
+                   g_overrideCheck.cpuAppliedOk && !g_overrideCheck.voltageSamplesOk) {
+            std::printf("Overrides and applied CPU clock are correct, but too few fresh\n");
+            std::printf("CPU-voltage samples were received. Keep them active and retry.\n");
+        } else {
+            std::printf("Open Horizon OC -> Temporary Overrides and correct ALL red values.\n");
+        }
     }
 
     if (g_overrideAction == PendingOverrideAction::VminProbe) {

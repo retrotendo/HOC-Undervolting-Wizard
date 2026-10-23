@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.4.0-beta.12
+
+- Remove manual Save KIP / Save Toolkit prompts from the active Wizard flow and documentation.
+- Keep required CFW reboot instructions where persistent settings change.
+- Label set points by their HOC menu area: General, RAM Settings, CPU Settings, CPU UV, HOC Toolkit and Temporary Overrides.
+- Preserve beta.11 tuning, stress-test, VMIN, skip and recovery logic.
+- Increase the GitHub Releases API fallback window from 5 to 100 releases.
+
 ## v0.4.0-beta.11
 
 - Make startup update checks resilient to GitHub API failures.

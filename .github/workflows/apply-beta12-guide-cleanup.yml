@@ -5,7 +5,7 @@ on:
     branches:
       - beta12-guide-menu-cleanup
     paths:
-      - 'tools/apply_beta12_guide_cleanup.py'
+      - 'tools/apply_beta12_guide_cleanup_v2.py'
       - '.github/workflows/apply-beta12-guide-cleanup.yml'
 
 permissions:
@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: beta12-guide-menu-cleanup
-      - run: python3 tools/apply_beta12_guide_cleanup.py
+      - run: python3 tools/apply_beta12_guide_cleanup_v2.py
       - run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com

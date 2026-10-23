@@ -27,10 +27,13 @@ constexpr int STOCK_VDDQ_MV = 600;
 constexpr int STOCK_VDD2_UV = 1175000;
 
 // Horizon OC temporary-override targets used by the Battery guide.
-constexpr u32 CLOCK_CPU_NORMAL_HZ = 1020000000U;
-constexpr u32 CLOCK_CPU_LOW_HZ    = 612000000U;
+constexpr u32 CLOCK_CPU_NORMAL_HZ   = 1020000000U;
+constexpr u32 CLOCK_CPU_VMIN_510_HZ = 510000000U;
+constexpr u32 CLOCK_CPU_LOW_HZ      = 612000000U;
+constexpr u32 CLOCK_CPU_VMIN_714_HZ = 714000000U;
 constexpr u32 CLOCK_CPU_VMIN_MID_HZ = 816000000U;
-constexpr u32 CLOCK_CPU_BOOST_HZ  = 1785000000U;
+constexpr u32 CLOCK_CPU_VMIN_918_HZ = 918000000U;
+constexpr u32 CLOCK_CPU_BOOST_HZ    = 1785000000U;
 constexpr u32 CLOCK_GPU_NORMAL_HZ = 384000000U;
 constexpr u32 CLOCK_GPU_BOOST_HZ  = 76800000U;
 constexpr u32 CLOCK_RAM_NORMAL_HZ = 1331200000U;
@@ -42,7 +45,8 @@ constexpr int LOW_VMIN_MIN_MV = 570;
 constexpr int VDDQ_MIN_MV = 400;
 constexpr int VDD2_MIN_UV = 912500;
 constexpr int LOW_VMIN_STEP_MV = 5;
-constexpr int VDDQ_STEP_MV = 5;
+constexpr int VDDQ_STEP_MV = 10;
+constexpr u32 VMIN_FLOOR_TOLERANCE_UV = 5000U;
 constexpr int VDD2_STEP_UV = 12500;
 
 enum class Stage : int {
@@ -69,7 +73,13 @@ enum class Stage : int {
     Complete,
     // Appended to preserve all existing beta.2 stage numbers in state.ini.
     LowVminValidate816,
-    LowVminValidate1020
+    LowVminValidate1020,
+    // beta.4 additions are appended to preserve older state.ini stage numbers.
+    LowVminSweep612,
+    LowVminSweep714,
+    LowVminSweep918,
+    LowVminFinalLong,
+    RamBoostValidate
 };
 
 struct WizardState {
@@ -84,6 +94,9 @@ struct WizardState {
     int vdd2TestUv = STOCK_VDD2_UV - VDD2_STEP_UV;
     int highUvGood = STOCK_HIGH_UV;
     int highUvTest = 1;
+    u32 vminFloorHz = 0;
+    int vminFloorObservedMv = 0;
+    int ramPairRetryMode = 0;
     bool recoveryNeeded = false;
     bool warningBelow590Seen = false;
 
@@ -102,6 +115,8 @@ bool g_resultScreen = false;
 stress::Result g_lastResult;
 stress::Kind g_lastKind = stress::Kind::Cpu;
 std::string g_resultAction;
+bool g_manualPass = false;
+bool g_lastVminAtFloor = false;
 
 struct OverrideExpectation {
     u32 cpuHz = 0;
@@ -137,14 +152,45 @@ const char* stageName(Stage s) {
         case Stage::Preparation: return "Preparation";
         case Stage::LowUvQuick: return "CPU Low UV - Quick Search";
         case Stage::LowUvLong: return "CPU Low UV - 1 Hour Validation";
-        case Stage::LowVminQuick: return "CPU Low VMIN - Quick Search @ 612";
-        case Stage::LowVminLong: return "CPU Low VMIN - Validation 1/3 @ 612";
-        case Stage::LowVminValidate816: return "CPU Low VMIN - Validation 2/3 @ 816";
-        case Stage::LowVminValidate1020: return "CPU Low VMIN - Validation 3/3 @ 1020";
+        case Stage::LowVminQuick:
+            std::printf("Keep CPU Low UV = %d.\n", g.lowUvGood);
+            std::printf("Set CPU Low VMIN = \x1b[1m%d mV\x1b[0m, Save KIP and reboot.\n", g.lowVminTest);
+            std::printf("Quick-search Overrides: CPU 510 / GPU 384 / RAM 1331\n");
+            break;
+        case Stage::LowVminLong:
+            if (g.recoveryNeeded) printSafeRecovery("CPU Low VMIN = " + std::to_string(g.lowVminGood) + " mV");
+            else std::printf("Use candidate Low VMIN = \x1b[1m%d mV\x1b[0m.\n", g.lowVminGood);
+            std::printf("Dynamic floor sweep: 510 MHz. CPU voltage is read from HOC.\n");
+            std::printf("Overrides: CPU 510 / GPU 384 / RAM 1331\n");
+            break;
+        case Stage::LowVminSweep612:
+            std::printf("Dynamic floor sweep: 612 MHz.\nOverrides: CPU 612 / GPU 384 / RAM 1331\n");
+            break;
+        case Stage::LowVminSweep714:
+            std::printf("Dynamic floor sweep: 714 MHz.\nOverrides: CPU 714 / GPU 384 / RAM 1331\n");
+            break;
+        case Stage::LowVminValidate816:
+            std::printf("Dynamic floor sweep: 816 MHz.\nOverrides: CPU 816 / GPU 384 / RAM 1331\n");
+            break;
+        case Stage::LowVminSweep918:
+            std::printf("Dynamic floor sweep: 918 MHz.\nOverrides: CPU 918 / GPU 384 / RAM 1331\n");
+            break;
+        case Stage::LowVminValidate1020:
+            std::printf("Dynamic floor sweep: 1020 MHz.\nOverrides: CPU 1020 / GPU 384 / RAM 1331\n");
+            break;
+        case Stage::LowVminFinalLong:
+            std::printf("Detected highest CPU clock still on the VMIN floor:\n");
+            std::printf("  %u MHz at about %d mV\n", (g.vminFloorHz ? g.vminFloorHz : CLOCK_CPU_VMIN_510_HZ) / 1000000U,
+                        g.vminFloorObservedMv ? g.vminFloorObservedMv : g.lowVminGood);
+            std::printf("Run the 1-hour confirmation at that clock.\n");
+            std::printf("GPU 384 / RAM 1331 remain fixed.\n");
+            std::printf("After PASS also check Home, Sleep/Wake, game launch/close.\n");
+            break;
         case Stage::VddqQuick: return "VDDQ - Quick Search";
         case Stage::VddqLong: return "VDDQ - 1 Hour Validation";
         case Stage::Vdd2Quick: return "VDD2 - Quick Search";
         case Stage::Vdd2Long: return "VDD2 - 1 Hour Validation";
+        case Stage::RamBoostValidate: return "RAM Rails - Boost Combined Validation";
         case Stage::Ram1331Validate: return "RAM - Normal Handheld Validation";
         case Stage::HighUvQuick: return "CPU High UV - Quick Search";
         case Stage::HighUvLong: return "CPU High UV - 1 Hour Validation";
@@ -171,12 +217,16 @@ bool testPlan(Stage s, stress::Kind& kind, int& seconds) {
     switch (s) {
         case Stage::LowUvQuick:
         case Stage::LowVminQuick:
+        case Stage::LowVminLong:
+        case Stage::LowVminSweep612:
+        case Stage::LowVminSweep714:
+        case Stage::LowVminValidate816:
+        case Stage::LowVminSweep918:
+        case Stage::LowVminValidate1020:
         case Stage::HighUvQuick:
             kind = stress::Kind::Cpu; seconds = 60; return true;
         case Stage::LowUvLong:
-        case Stage::LowVminLong:
-        case Stage::LowVminValidate816:
-        case Stage::LowVminValidate1020:
+        case Stage::LowVminFinalLong:
         case Stage::HighUvLong:
         case Stage::NormalMatrixValidate:
         case Stage::BoostMatrixValidate:
@@ -186,6 +236,7 @@ bool testPlan(Stage s, stress::Kind& kind, int& seconds) {
             kind = stress::Kind::Ram; seconds = 60; return true;
         case Stage::VddqLong:
         case Stage::Vdd2Long:
+        case Stage::RamBoostValidate:
         case Stage::Ram1331Validate:
         case Stage::NormalMemValidate:
         case Stage::BoostMemValidate:
@@ -204,7 +255,6 @@ bool overridePlan(Stage s, OverrideExpectation& e) {
     switch (s) {
         case Stage::LowUvQuick:
         case Stage::LowUvLong:
-        case Stage::LowVminValidate1020:
         case Stage::Ram1331Validate:
         case Stage::NormalMatrixValidate:
         case Stage::NormalMemValidate:
@@ -214,17 +264,33 @@ bool overridePlan(Stage s, OverrideExpectation& e) {
 
         case Stage::LowVminQuick:
         case Stage::LowVminLong:
+            e = {CLOCK_CPU_VMIN_510_HZ, CLOCK_GPU_NORMAL_HZ, CLOCK_RAM_NORMAL_HZ};
+            return true;
+        case Stage::LowVminSweep612:
             e = {CLOCK_CPU_LOW_HZ, CLOCK_GPU_NORMAL_HZ, CLOCK_RAM_NORMAL_HZ};
             return true;
-
+        case Stage::LowVminSweep714:
+            e = {CLOCK_CPU_VMIN_714_HZ, CLOCK_GPU_NORMAL_HZ, CLOCK_RAM_NORMAL_HZ};
+            return true;
         case Stage::LowVminValidate816:
             e = {CLOCK_CPU_VMIN_MID_HZ, CLOCK_GPU_NORMAL_HZ, CLOCK_RAM_NORMAL_HZ};
+            return true;
+        case Stage::LowVminSweep918:
+            e = {CLOCK_CPU_VMIN_918_HZ, CLOCK_GPU_NORMAL_HZ, CLOCK_RAM_NORMAL_HZ};
+            return true;
+        case Stage::LowVminValidate1020:
+            e = {CLOCK_CPU_NORMAL_HZ, CLOCK_GPU_NORMAL_HZ, CLOCK_RAM_NORMAL_HZ};
+            return true;
+        case Stage::LowVminFinalLong:
+            e = {g.vminFloorHz ? g.vminFloorHz : CLOCK_CPU_VMIN_510_HZ,
+                 CLOCK_GPU_NORMAL_HZ, CLOCK_RAM_NORMAL_HZ};
             return true;
 
         case Stage::VddqQuick:
         case Stage::VddqLong:
         case Stage::Vdd2Quick:
         case Stage::Vdd2Long:
+        case Stage::RamBoostValidate:
         case Stage::HighUvQuick:
         case Stage::HighUvLong:
         case Stage::BoostCpuRamValidate:
@@ -307,6 +373,9 @@ bool saveState() {
     f << "vdd2TestUv=" << g.vdd2TestUv << "\n";
     f << "highUvGood=" << g.highUvGood << "\n";
     f << "highUvTest=" << g.highUvTest << "\n";
+    f << "vminFloorHz=" << g.vminFloorHz << "\n";
+    f << "vminFloorObservedMv=" << g.vminFloorObservedMv << "\n";
+    f << "ramPairRetryMode=" << g.ramPairRetryMode << "\n";
     f << "recoveryNeeded=" << (g.recoveryNeeded ? 1 : 0) << "\n";
     f << "warningBelow590Seen=" << (g.warningBelow590Seen ? 1 : 0) << "\n";
     f << "testRunning=" << (g.testRunning ? 1 : 0) << "\n";
@@ -332,6 +401,9 @@ void assignKV(const std::string& key, const std::string& value) {
     else if (key == "vdd2TestUv") g.vdd2TestUv = v;
     else if (key == "highUvGood") g.highUvGood = v;
     else if (key == "highUvTest") g.highUvTest = v;
+    else if (key == "vminFloorHz") g.vminFloorHz = (u32)v;
+    else if (key == "vminFloorObservedMv") g.vminFloorObservedMv = v;
+    else if (key == "ramPairRetryMode") g.ramPairRetryMode = v;
     else if (key == "recoveryNeeded") g.recoveryNeeded = (v != 0);
     else if (key == "warningBelow590Seen") g.warningBelow590Seen = (v != 0);
     else if (key == "testRunning") g.testRunning = (v != 0);
@@ -363,12 +435,15 @@ void writeResults() {
     std::ofstream f(RESULTS, std::ios::trunc);
     if (!f) return;
     f << "HOC Undervolting Wizard - Final Results\n\n";
-    f << "CPU UV Table: Default / Normal (not Extreme)\n";
+    f << "CPU UV Table: user-selected (recommended: 1683 MHz Tbreak)\n";
     f << "CPU Low UV: " << g.lowUvGood << "\n";
     f << "CPU Low VMIN: " << g.lowVminGood << " mV\n";
     f << "RAM VDDQ: " << g.vddqGood << " mV\n";
     f << "RAM VDD2: " << formatVdd2(g.vdd2GoodUv) << "\n";
-    f << "CPU High UV: " << g.highUvGood << "\n\n";
+    f << "CPU High UV: " << g.highUvGood << "\n";
+    if (g.vminFloorHz)
+        f << "Detected highest Low VMIN floor clock: " << (g.vminFloorHz / 1000000U) << " MHz (~" << g.vminFloorObservedMv << " mV)\n";
+    f << "\n";
     f << "Built-in CPU/RAM/combined/GPU validation completed.\n";
     f << "Normal handheld target: 1020 / 384 / 1331.\n";
     f << "Nintendo Boost target: 1785 / 76.8 / 1600.\n";
@@ -390,32 +465,33 @@ void printSafeRecovery(const std::string& restoreText) {
 }
 
 void footerTest() {
-    std::printf("\n\x1b[32m[A] START BUILT-IN TEST\x1b[0m   \x1b[31m[X] Manual FAIL\x1b[0m\n");
+    std::printf("\n\x1b[32m[A] START BUILT-IN TEST\x1b[0m   \x1b[36m[+] KNOWN PASS / SKIP\x1b[0m\n");
+    std::printf("\x1b[31m[X] KNOWN FAIL / SKIP\x1b[0m\n");
     if (isQuickStage(g.stage)) std::printf("\x1b[33m[Y] DID NOT BOOT\x1b[0m\n");
     std::printf("[B] Exit   [-] Reset wizard\n");
 }
 
 void renderPreparation() {
     title();
-    std::printf("Before tuning, prepare the Battery profile exactly once.\n\n");
-    std::printf("HOC Toolkit / stock clock limits:\n");
-    std::printf("  CPU Max Clock   : 1785 MHz\n");
-    std::printf("  CPU Boost Clock : 1785 MHz\n");
-    std::printf("  GPU Max Clock   : 384 MHz\n");
-    std::printf("  RAM Max Clock   : 1600 MHz\n\n");
-    std::printf("Horizon OC:\n");
-    std::printf("  Safety -> Uncapped Clocks : OFF\n");
-    std::printf("  RAM -> HP Mode             : OFF\n");
-    std::printf("  RAM Max Clock              : 1600 MHz\n");
-    std::printf("  Overwrite Boost Mode       : OFF\n");
-    std::printf("  Auto CPU RAM OC            : OFF\n");
-    std::printf("  CPU UV Table               : Normal\n");
-    std::printf("  Low UV / High UV           : 0 / 0\n");
-    std::printf("  Low VMIN / High VMIN       : %d / %d mV\n", STOCK_LOW_VMIN_MV, STOCK_HIGH_VMIN_MV);
-    std::printf("  RAM VDD2 / VDDQ            : %s / %d mV\n", formatVdd2(STOCK_VDD2_UV).c_str(), STOCK_VDDQ_MV);
-    std::printf("  Per-game CPU/GPU/RAM       : STOCK / default\n\n");
-    std::printf("Save/apply the Toolkit values, Save KIP, then REBOOT CFW.\n");
+    std::printf("Before tuning, prepare the Battery profile once.\n\n");
+    std::printf("Horizon OC - Safety / RAM:\n");
+    std::printf("  Uncapped Clocks : OFF\n");
+    std::printf("  HP Mode          : OFF\n");
+    std::printf("  RAM Max Clock    : 1600 MHz\n");
+    std::printf("  VDD2             : 1175 mV or known-stable lower value\n");
+    std::printf("  VDDQ             : 600 mV or known-stable lower value\n\n");
+    std::printf("Horizon OC - CPU:\n");
+    std::printf("  CPU Max Clock    : LOWEST SELECTABLE (currently 1963 MHz)\n");
+    std::printf("  CPU UV Table     : 1683 MHz Tbreak or known-working table\n");
+    std::printf("  Low UV / High UV : 0 / 0, or known-stable values\n");
+    std::printf("  Low VMIN         : 620 mV or known-stable value\n");
+    std::printf("  High VMIN        : 750 mV\n\n");
+    std::printf("HOC Toolkit:\n");
+    std::printf("  CPU Boost Clock  : LOWEST SELECTABLE (stock target 1785 MHz)\n\n");
+    std::printf("Save/apply Toolkit values, Save KIP, then REBOOT CFW.\n");
     std::printf("After reboot reopen this Wizard and press [A].\n\n");
+    std::printf("Already know a value? During any built-in test use [+] to\n");
+    std::printf("record a KNOWN PASS without running it, or [X] for KNOWN FAIL.\n\n");
     std::printf("[A] Setup done - start tuning   [B] Exit   [-] Reset\n");
 }
 
@@ -478,6 +554,13 @@ void renderTestStage() {
             if (g.recoveryNeeded) printSafeRecovery("RAM VDD2 = " + formatVdd2(g.vdd2GoodUv));
             else std::printf("Restore RAM VDD2 = \x1b[1m%s\x1b[0m, Save KIP and reboot.\n", formatVdd2(g.vdd2GoodUv).c_str());
             std::printf("Keep VDDQ = %d mV.\n", g.vddqGood);
+            std::printf("Overrides: CPU 1785 / GPU 76.8 / RAM 1600\n");
+            break;
+        case Stage::RamBoostValidate:
+            std::printf("Confirm final VDDQ + VDD2 together at Nintendo Boost clocks.\n");
+            std::printf("VDDQ %d mV / VDD2 %s\n", g.vddqGood, formatVdd2(g.vdd2GoodUv).c_str());
+            if (g.ramPairRetryMode == 1) std::printf("Retry mode: VDDQ raised by one 10 mV step.\n");
+            if (g.ramPairRetryMode == 2) std::printf("Retry mode: VDDQ restored; VDD2 raised by 12.5 mV.\n");
             std::printf("Overrides: CPU 1785 / GPU 76.8 / RAM 1600\n");
             break;
         case Stage::Ram1331Validate:
@@ -638,8 +721,50 @@ void render() {
     consoleUpdate(nullptr);
 }
 
+bool isVminSweepStage(Stage st) {
+    return st == Stage::LowVminLong || st == Stage::LowVminSweep612 ||
+           st == Stage::LowVminSweep714 || st == Stage::LowVminValidate816 ||
+           st == Stage::LowVminSweep918 || st == Stage::LowVminValidate1020;
+}
+
+u32 vminSweepClock(Stage st) {
+    switch (st) {
+        case Stage::LowVminLong: return CLOCK_CPU_VMIN_510_HZ;
+        case Stage::LowVminSweep612: return CLOCK_CPU_LOW_HZ;
+        case Stage::LowVminSweep714: return CLOCK_CPU_VMIN_714_HZ;
+        case Stage::LowVminValidate816: return CLOCK_CPU_VMIN_MID_HZ;
+        case Stage::LowVminSweep918: return CLOCK_CPU_VMIN_918_HZ;
+        case Stage::LowVminValidate1020: return CLOCK_CPU_NORMAL_HZ;
+        default: return 0;
+    }
+}
+
+void recordVminObservation(Stage st) {
+    g_lastVminAtFloor = false;
+    if (!isVminSweepStage(st) || !g_overrideCheck.readOk) return;
+    const u32 hz = vminSweepClock(st);
+    const u32 uv = g_overrideCheck.current.cpuVoltageUv;
+    if (!hz || !uv) return;
+    const u32 floorUv = (u32)g.lowVminGood * 1000U;
+    const u32 delta = uv > floorUv ? uv - floorUv : floorUv - uv;
+    g_lastVminAtFloor = delta <= VMIN_FLOOR_TOLERANCE_UV;
+    if (g_lastVminAtFloor) {
+        g.vminFloorHz = hz;
+        g.vminFloorObservedMv = (int)((uv + 500U) / 1000U);
+        saveState();
+    }
+}
+
+void restartVminSweep(bool recovery) {
+    g.stage = Stage::LowVminLong;
+    g.recoveryNeeded = recovery;
+    g.vminFloorHz = 0;
+    g.vminFloorObservedMv = 0;
+    saveState();
+}
+
 void enterLowUvLong(bool recovery) { g.stage = Stage::LowUvLong; g.recoveryNeeded = recovery; saveState(); }
-void enterLowVminLong(bool recovery) { g.stage = Stage::LowVminLong; g.recoveryNeeded = recovery; saveState(); }
+void enterLowVminLong(bool recovery) { restartVminSweep(recovery); }
 void enterVddqLong(bool recovery) { g.stage = Stage::VddqLong; g.recoveryNeeded = recovery; saveState(); }
 void enterVdd2Long(bool recovery) { g.stage = Stage::Vdd2Long; g.recoveryNeeded = recovery; saveState(); }
 void enterHighUvLong(bool recovery) { g.stage = Stage::HighUvLong; g.recoveryNeeded = recovery; saveState(); }
@@ -659,11 +784,29 @@ void handlePass() {
             if (g.lowVminTest <= LOW_VMIN_MIN_MV) { enterLowVminLong(false); return; }
             g.lowVminTest -= LOW_VMIN_STEP_MV; break;
         case Stage::LowVminLong:
-            g.recoveryNeeded = false; g.stage = Stage::LowVminValidate816; break;
+            if (!g_manualPass && !g_lastVminAtFloor) { g.vminFloorHz = CLOCK_CPU_VMIN_510_HZ; g.vminFloorObservedMv = g.lowVminGood; g.stage = Stage::LowVminFinalLong; }
+            else g.stage = Stage::LowVminSweep612;
+            break;
+        case Stage::LowVminSweep612:
+            if (!g_manualPass && !g_lastVminAtFloor) g.stage = Stage::LowVminFinalLong;
+            else g.stage = Stage::LowVminSweep714;
+            break;
+        case Stage::LowVminSweep714:
+            if (!g_manualPass && !g_lastVminAtFloor) g.stage = Stage::LowVminFinalLong;
+            else g.stage = Stage::LowVminValidate816;
+            break;
         case Stage::LowVminValidate816:
-            g.stage = Stage::LowVminValidate1020; break;
+            if (!g_manualPass && !g_lastVminAtFloor) g.stage = Stage::LowVminFinalLong;
+            else g.stage = Stage::LowVminSweep918;
+            break;
+        case Stage::LowVminSweep918:
+            if (!g_manualPass && !g_lastVminAtFloor) g.stage = Stage::LowVminFinalLong;
+            else g.stage = Stage::LowVminValidate1020;
+            break;
         case Stage::LowVminValidate1020:
-            g.stage = Stage::VddqQuick;
+            g.stage = Stage::LowVminFinalLong; break;
+        case Stage::LowVminFinalLong:
+            g.recoveryNeeded = false; g.stage = Stage::VddqQuick;
             g.vddqTest = STOCK_VDDQ_MV - VDDQ_STEP_MV; break;
         case Stage::VddqQuick:
             g.vddqGood = g.vddqTest;
@@ -676,7 +819,10 @@ void handlePass() {
             g.vdd2GoodUv = g.vdd2TestUv;
             if (g.vdd2TestUv <= VDD2_MIN_UV) { enterVdd2Long(false); return; }
             g.vdd2TestUv -= VDD2_STEP_UV; break;
-        case Stage::Vdd2Long: g.recoveryNeeded = false; g.stage = Stage::Ram1331Validate; break;
+        case Stage::Vdd2Long:
+            g.recoveryNeeded = false; g.ramPairRetryMode = 0; g.stage = Stage::RamBoostValidate; break;
+        case Stage::RamBoostValidate:
+            g.ramPairRetryMode = 0; g.stage = Stage::Ram1331Validate; break;
         case Stage::Ram1331Validate: g.stage = Stage::HighUvQuick; g.highUvTest = 1; break;
         case Stage::HighUvQuick:
             g.highUvGood = g.highUvTest;
@@ -702,16 +848,32 @@ void handleFail(bool didNotBoot) {
         case Stage::LowUvLong: if (g.lowUvGood > 0) --g.lowUvGood; g.recoveryNeeded = false; break;
         case Stage::LowVminQuick: enterLowVminLong(didNotBoot); return;
         case Stage::LowVminLong:
+        case Stage::LowVminSweep612:
+        case Stage::LowVminSweep714:
         case Stage::LowVminValidate816:
+        case Stage::LowVminSweep918:
         case Stage::LowVminValidate1020:
+        case Stage::LowVminFinalLong:
             if (g.lowVminGood < STOCK_LOW_VMIN_MV) g.lowVminGood += LOW_VMIN_STEP_MV;
             g.recoveryNeeded = false;
-            g.stage = Stage::LowVminLong;
-            break;
+            restartVminSweep(false);
+            return;
         case Stage::VddqQuick: enterVddqLong(didNotBoot); return;
         case Stage::VddqLong: g.vddqGood += VDDQ_STEP_MV; g.recoveryNeeded = false; break;
         case Stage::Vdd2Quick: enterVdd2Long(didNotBoot); return;
         case Stage::Vdd2Long: g.vdd2GoodUv += VDD2_STEP_UV; g.recoveryNeeded = false; break;
+        case Stage::RamBoostValidate:
+            if (g.ramPairRetryMode == 0) {
+                g.vddqGood += VDDQ_STEP_MV;
+                g.ramPairRetryMode = 1;
+            } else if (g.ramPairRetryMode == 1) {
+                g.vddqGood -= VDDQ_STEP_MV;
+                g.vdd2GoodUv += VDD2_STEP_UV;
+                g.ramPairRetryMode = 2;
+            } else {
+                g.vdd2GoodUv += VDD2_STEP_UV;
+            }
+            break;
         case Stage::Ram1331Validate: g.vddqGood += VDDQ_STEP_MV; break;
         case Stage::HighUvQuick: enterHighUvLong(didNotBoot); return;
         case Stage::HighUvLong: if (g.highUvGood > 0) --g.highUvGood; g.recoveryNeeded = false; break;
@@ -742,6 +904,9 @@ void runCurrentTest() {
     g_overridePrompt = false;
 
     const Stage testedStage = g.stage;
+    g_lastVminAtFloor = false;
+    if (isVminSweepStage(testedStage))
+        recordVminObservation(testedStage);
     g.testRunning = true;
     g.testKind = static_cast<int>(kind);
     g.testDurationSec = seconds;
@@ -761,6 +926,10 @@ void runCurrentTest() {
     if (g_lastResult.outcome == stress::Outcome::Pass) {
         handlePass();
         g_resultAction = "PASS recorded automatically. The wizard advanced to the next step.";
+        if (isVminSweepStage(testedStage)) {
+            const u32 uv = g_overrideCheck.current.cpuVoltageUv;
+            g_resultAction += " CPU rail was about " + std::to_string((uv + 500U) / 1000U) + " mV.";
+        }
     } else if (g_lastResult.outcome == stress::Outcome::Fail) {
         handleFail(false);
         g_resultAction = "FAIL recorded automatically. Follow the safer value shown on the next step.";
@@ -798,7 +967,7 @@ int main() {
         if (g_interruptedPrompt) {
             if (k & HidNpadButton_A) {
                 g.testRunning = false;
-                if (g.testStage >= 0 && g.testStage <= static_cast<int>(Stage::LowVminValidate1020))
+                if (g.testStage >= 0 && g.testStage <= static_cast<int>(Stage::RamBoostValidate))
                     g.stage = static_cast<Stage>(g.testStage);
                 g.testKind = g.testDurationSec = g.testStage = 0;
                 saveState();
@@ -807,7 +976,7 @@ int main() {
                 redraw = true;
             } else if (k & HidNpadButton_X) {
                 g.testRunning = false;
-                if (g.testStage >= 0 && g.testStage <= static_cast<int>(Stage::LowVminValidate1020))
+                if (g.testStage >= 0 && g.testStage <= static_cast<int>(Stage::RamBoostValidate))
                     g.stage = static_cast<Stage>(g.testStage);
                 g.testKind = g.testDurationSec = g.testStage = 0;
                 saveState();
@@ -864,6 +1033,16 @@ int main() {
         } else if (k & HidNpadButton_Y && isQuickStage(g.stage)) {
             handleFail(true);
             redraw = true;
+        } else if (k & HidNpadButton_Plus) {
+            stress::Kind skipKind;
+            int skipSeconds = 0;
+            if (testPlan(g.stage, skipKind, skipSeconds)) {
+                g_manualPass = true;
+                g_lastVminAtFloor = true;
+                handlePass();
+                g_manualPass = false;
+                redraw = true;
+            }
         } else if (k & HidNpadButton_X) {
             if (g.stage != Stage::Preparation && g.stage != Stage::Complete) {
                 handleFail(false);

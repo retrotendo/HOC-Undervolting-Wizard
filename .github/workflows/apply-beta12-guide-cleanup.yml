@@ -1,0 +1,27 @@
+name: Apply beta12 guide cleanup
+
+on:
+  push:
+    branches:
+      - beta12-guide-menu-cleanup
+    paths:
+      - 'tools/apply_beta12_guide_cleanup.py'
+      - '.github/workflows/apply-beta12-guide-cleanup.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: beta12-guide-menu-cleanup
+      - run: python3 tools/apply_beta12_guide_cleanup.py
+      - run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add source/main.cpp source/updater.cpp Makefile UPDATE.txt README.md CHANGELOG.md
+          git commit -m "beta12: clean up guide menu labels" || exit 0
+          git push origin beta12-guide-menu-cleanup

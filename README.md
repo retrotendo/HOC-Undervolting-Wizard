@@ -57,6 +57,29 @@ This check uses the same `appletGetAppletType()` distinction as nx-hbmenu: only 
 
 ---
 
+# New in v0.4.0-beta.8
+
+## Startup self-updater
+
+Starting with **beta.8**, the Wizard checks its own GitHub releases when it starts in Full Application Mode.
+
+- If the installed build is current, startup continues normally.
+- If a newer build exists, the Wizard asks before doing anything: **A = Download & install**, **B = Not now**.
+- The new NRO is downloaded to a temporary `.new` file first.
+- The matching release `.sha256` file is downloaded and the NRO is verified with libnx SHA256 before replacement.
+- Only after verification does the Wizard rename the current NRO to `.bak` and move the verified `.new` file into place.
+- If replacement fails, the old NRO is restored.
+- After a successful update the Wizard exits; launch it again from hbmenu to run the new build.
+- The previous NRO remains beside the app as `.bak` for recovery and is replaced by the next updater run.
+
+The updater is intentionally **not automatic**: it never installs a release without the user's A-button confirmation. Network/update-check failures are non-fatal and simply continue with the installed build.
+
+The GitHub repository must be public for anonymous in-app update checks; no GitHub token is embedded in the NRO.
+
+**beta.8 itself must be installed manually once. Future builds can then update beta.8 in-app.**
+
+---
+
 # New in v0.4.0-beta.7
 
 - Preparation now shows only the exact Battery-guide starting values.
@@ -157,7 +180,7 @@ The Wizard requires Homebrew Menu **title takeover / Full Application Mode**. Ap
 
 ## Install
 
-1. Download `HOC-Undervolting-Wizard.nro` from the latest GitHub release.
+1. Download `HOC-Undervolting-Wizard.nro` from the latest GitHub release. For beta.8 this is the final required manual update; later builds can be installed by the in-app updater.
 2. Create:
 
    `/switch/HOC-Undervolting-Wizard/`

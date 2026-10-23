@@ -162,6 +162,26 @@ Copyright 2017-2018 libnx Authors
 
 ---
 
+## 6. libcurl
+
+The startup self-updater links the devkitPro **switch-curl** port of libcurl for HTTPS access to the GitHub Releases API and release assets.
+
+Project: https://github.com/curl/curl
+
+COPYRIGHT AND PERMISSION NOTICE
+
+Copyright (c) 1996 - 2026, Daniel Stenberg, <daniel@haxx.se>, and many contributors, see the THANKS file.
+
+All rights reserved.
+
+Permission to use, copy, modify, and distribute this software for any purpose with or without fee is hereby granted, provided that the above copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF THIRD PARTY RIGHTS. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+Except as contained in this notice, the name of a copyright holder shall not be used in advertising or otherwise to promote the sale, use or other dealings in this Software without prior written authorization of the copyright holder.
+
+---
+
 ## Distribution note
 
 When distributing an `.nro` built from this branch, the corresponding source code must remain available under GPL-2.0-only. Publishing the NRO from the same public GitHub repository as its complete buildable source is the intended distribution method for this project.

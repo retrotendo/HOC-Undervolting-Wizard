@@ -1,0 +1,27 @@
+name: Apply beta10 UI position fix
+
+on:
+  push:
+    branches:
+      - beta10-ui-position-fix
+    paths:
+      - 'tools/apply_beta10_ui_fix.py'
+      - '.github/workflows/apply-beta10-ui-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: beta10-ui-position-fix
+      - run: python3 tools/apply_beta10_ui_fix.py
+      - run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add source/main.cpp Makefile README.md CHANGELOG.md
+          git commit -m "beta10: fix right-side UI position" || exit 0
+          git push origin beta10-ui-position-fix

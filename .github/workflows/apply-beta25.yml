@@ -22,7 +22,7 @@ jobs:
           ref: beta25-current-baseline-lowuv-bootsearch
           fetch-depth: 0
       - name: Apply patch
-        run: python3 .github/scripts/apply_beta25.py
+        run: python3 .github/scripts/apply_beta25_v2.py
       - name: Build
         run: make -j2
       - name: Commit patched source

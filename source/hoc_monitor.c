@@ -94,7 +94,6 @@ typedef struct {
 } HocMonSetOverrideArgs;
 
 _Static_assert(sizeof(HocMonRawContext) == 0x500, "Horizon OC context size mismatch");
-_Static_assert(offsetof(HocMonContextPrefix, dramID) == 403, "Unexpected Horizon OC API-v2 context layout");
 _Static_assert(sizeof(HocMonSetOverrideArgs) == 8, "Unexpected Horizon OC SetOverride args layout");
 
 /* Relevant indexes from Horizon OC HocClkConfigValue. */
@@ -198,6 +197,20 @@ Result hocmonSetOverride(u32 module, u32 hz)
     return rc;
 }
 
+static bool hocmonIsKnownMarikoDramId(u8 id)
+{
+    switch (id) {
+        case 3: case 5: case 6:
+        case 8: case 9: case 10: case 11: case 12: case 13: case 14: case 15:
+        case 17: case 18: case 19: case 20: case 21: case 22: case 23: case 24:
+        case 25: case 26: case 27: case 28: case 29: case 30: case 31:
+        case 32: case 33: case 34:
+            return true;
+        default:
+            return false;
+    }
+}
+
 Result hocmonGetHardware(HocMonHardware* out)
 {
     if (!out)
@@ -220,14 +233,47 @@ Result hocmonGetHardware(HocMonHardware* out)
     if (R_FAILED(rc))
         return rc;
 
-    const HocMonContextPrefix* ctx = (const HocMonContextPrefix*)&raw;
-    /* Current HOC IDs are 0..34 and console types 0..3. Reject layout garbage. */
-    if (ctx->dramID > 34 || ctx->consoleType < 0 || ctx->consoleType > 3)
+    /*
+     * HOC 2.6.0 and current HOC use the same 0x500 context size but differ by
+     * one byte before maxDisplayFreq/dramID:
+     *
+     *   current main : [402]=maxDisplayFreq [403]=dramID [404]=isDram8GB
+     *   HOC 2.6.0   : [402]=isUsingRetroSuper [403]=maxDisplayFreq
+     *                  [404]=dramID [405]=isDram8GB
+     *
+     * consoleType remains 32-bit aligned at byte 408 in both layouts. Do not
+     * guess from maxDisplayFreq; validate both layouts against HOC's known
+     * Mariko DRAM IDs and the adjacent boolean instead.
+     */
+    const u8* bytes = (const u8*)&raw;
+    s32 consoleType = -1;
+    memcpy(&consoleType, bytes + 408, sizeof(consoleType));
+    if (consoleType < 0 || consoleType > 3)
         return 3;
 
-    out->dramId = ctx->dramID;
-    out->isDram8GB = ctx->isDram8GB;
-    out->consoleType = (u32)ctx->consoleType;
+    const u8 currentId = bytes[403];
+    const u8 currentIs8GB = bytes[404];
+    const bool currentValid =
+        hocmonIsKnownMarikoDramId(currentId) && currentIs8GB <= 1;
+
+    const u8 hoc260Id = bytes[404];
+    const u8 hoc260Is8GB = bytes[405];
+    const bool hoc260Valid =
+        hocmonIsKnownMarikoDramId(hoc260Id) && hoc260Is8GB <= 1;
+
+    /* Exactly one known layout must validate. Ambiguous/unknown future layouts
+       deliberately fail instead of selecting a RAM family by accident. */
+    if (currentValid == hoc260Valid)
+        return 3;
+
+    if (currentValid) {
+        out->dramId = currentId;
+        out->isDram8GB = currentIs8GB != 0;
+    } else {
+        out->dramId = hoc260Id;
+        out->isDram8GB = hoc260Is8GB != 0;
+    }
+    out->consoleType = (u32)consoleType;
     return 0;
 }
 

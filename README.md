@@ -1,6 +1,6 @@
 # HOC Undervolting Wizard
 
-A step-by-step Nintendo Switch homebrew assistant for finding and validating efficient **Horizon OC undervolting settings** on **Mariko / Switch OLED**.
+A step-by-step Nintendo Switch homebrew assistant for finding and validating efficient **Horizon OC undervolting settings** on **Mariko / Switch V2 / Lite / OLED**.
 
 The Wizard was created as a companion to **Performance Modes**:
 
@@ -33,7 +33,7 @@ Built-in tests use established open-source workloads:
   - Project-original deko3d compute/memory test.
   - GPU output is verified on the CPU and mismatches fail the test.
 
-Quick boundary tests normally run for **1 minute**. Long validation tests run for **1 hour**. The dynamic Low VMIN floor sweep is measurement-only and does not run a stress test at every frequency.
+Quick boundary tests normally run for **1 minute**. Long validation tests run for **1 hour**. The Low VMIN voltage scan is measurement-only; after the scan, the Wizard runs a long CPU test only at the highest frequency of each distinct measured voltage region.
 
 Before **every built-in test and every VMIN floor probe**, the Wizard reads Horizon OC's live `hoc:clk` context and verifies all three Temporary Overrides:
 
@@ -54,6 +54,48 @@ If it is started in **Applet Mode** (for example through Album), the Wizard stop
 To launch correctly, hold **R** while starting an installed game and keep holding **R** until hbmenu opens, then start HOC Undervolting Wizard.
 
 This check uses the same `appletGetAppletType()` distinction as nx-hbmenu: only `Application` and `SystemApplication` modes are accepted.
+
+---
+
+# New in v0.4.0-beta.16
+
+## Hardware-aware VDDQ start
+
+- Before Preparation, the Wizard reads Horizon OC's `dramID` and identifies the installed Mariko RAM module.
+- The VDDQ baseline is selected automatically from the Horizon OC RAM guidance: **640 mV** for NEE/x267, AA-MGCL, AM-MGCJ, AB-MGCL and NME; **600 mV** for WT:B, WT:F and WT:E.
+- The detected RAM module, DRAM ID and chosen VDDQ start are shown before Preparation.
+- Unknown/unsupported DRAM IDs are not guessed; detection must succeed before the guided setup continues.
+
+## Verified setting -> guided reboot
+
+Persistent HOC changes now use a dedicated handoff instead of mixing setting instructions and stress tests on one page:
+
+1. The Wizard shows only the **new value that must be changed now**.
+2. Press **A** and the Wizard reads Horizon OC's current persistent configuration.
+3. A wrong value is shown as **Required / Current / WRONG** and reboot is blocked.
+4. A correct value gets a green confirmation such as **Low VMIN 615 mV is set**.
+5. Press **A** again to request the console restart.
+6. After reopening the Wizard, it first asks whether the console booted normally with the new value.
+7. Only after **YES** does the 1-minute/1-hour test page appear.
+
+Values that were already confirmed are no longer repeated as set points on later pages. Temporary Overrides are still shown whenever they must be changed for a test.
+
+## Automatic CPU Low VMIN voltage scan
+
+After the Low VMIN candidate has booted successfully, the Wizard offers one **A = START SCAN** action. From that point the voltage scan runs without further user input.
+
+- The currently active CPU/GPU/RAM Temporary Overrides are saved first.
+- GPU is set automatically to **384 MHz** and RAM to **1331.2 MHz**.
+- CPU is switched automatically through **510 -> 612 -> 714 -> 816 -> 918 -> 1020 MHz**.
+- HOC is given time to settle after every frequency change.
+- At every CPU point the Wizard takes **3 valid CPU-rail samples** and uses the median.
+- Readings are grouped into distinct 5 mV CPU-voltage regions.
+- The Temporary Overrides that were active before the scan are restored afterward.
+- For each detected voltage region, only the **highest frequency in that region** gets the later 1-hour CPU stability test.
+
+Example: if 510-816 MHz measure ~570 mV, 918 MHz measures ~585 mV and 1020 MHz measures ~600 mV, the Wizard validates **816 @ 570**, **918 @ 585** and **1020 @ 600**.
+
+The detected voltage regions are also written to `results.txt`. The Wizard still does not change persistent Low VMIN/UV/RAM voltage settings automatically; this scan writes only Temporary Overrides.
 
 ---
 
@@ -195,15 +237,15 @@ After the Wizard finds a Low VMIN candidate it performs a short ascending sweep:
 
 GPU remains **384 MHz** and RAM remains **1331.2 MHz**.
 
-At each step the Wizard verifies CPU/GPU/RAM overrides and reads the **live CPU rail voltage reported by Horizon OC**. The probe takes **3 context samples** and uses the **median of valid readings** and only accepts samples while HOC reports the requested CPU clock as actually applied so a single stale HOC poll does not decide the crossover. It remembers the highest CPU frequency still operating at the configured VMIN floor (within one 5 mV PMIC step).
+Starting with beta.16, the Wizard sets these Temporary Overrides itself for this scan. It saves the previous CPU/GPU/RAM overrides, applies the scan clocks, waits for HOC/governor to settle, then reads the **live CPU rail voltage reported by Horizon OC**. Every point uses **3 valid context samples** and the median; samples are accepted only while HOC reports the requested CPU clock as actually applied. After the full scan, the previous Temporary Overrides are restored.
 
-These sweep points are **measurement-only**. They do not each run another 1-minute stress test. The actual stability confirmation is concentrated at the highest detected floor-bound CPU clock.
+These sweep points are **measurement-only**. They do not each run another 1-minute stress test. Starting with beta.16, all six points are measured so the Wizard can identify every distinct CPU-voltage region, not only the VMIN floor.
 
-As soon as the voltage has clearly risen above VMIN, higher sweep steps are no longer needed. The Wizard then runs the **1-hour Low VMIN confirmation at the highest detected floor-bound CPU clock**.
+Readings are rounded/grouped on HOC's 5 mV voltage steps. The Wizard then selects the **highest CPU frequency in each observed voltage region** for 1-hour CPU validation.
 
-Example: if a console reports roughly 570 mV through 816 MHz but ~585 mV at 918 MHz, the long VMIN test is run at **816 MHz**, not at 510 and not unnecessarily at 1020.
+Example: if a console reports roughly 570 mV through 816 MHz, ~585 mV at 918 MHz and ~600 mV at 1020 MHz, the long validations are **816 @ 570**, **918 @ 585** and **1020 @ 600**.
 
-Lower CPU clocks on the same voltage floor are computationally less demanding, but normal Home/Sleep/Wake/game transitions should still be checked afterward.
+Lower CPU clocks within the same voltage region are computationally less demanding, while normal Home/Sleep/Wake/game transitions remain part of final validation.
 
 ---
 
@@ -220,11 +262,11 @@ Cancelling a running test with **B** does not count as FAIL.
 
 ---
 
-# The Wizard does not write Horizon OC tuning values
+# Persistent tuning values remain manual
 
-The Wizard reads Horizon OC context data for clocks, overrides and the current CPU rail voltage, but it does **not** write UV/voltage settings and does **not** edit `hoc.kip`.
+The Wizard does **not** write persistent CPU UV, Low/High VMIN, VDDQ or VDD2 tuning values and does **not** edit `hoc.kip`. Horizon OC remains the place where those tuning values are changed.
 
-Horizon OC remains the place where tuning values are changed.
+The beta.16 automatic Low VMIN scan is the first exception for **Temporary Overrides only**: the Wizard can set CPU/GPU/RAM Temporary Overrides through HOC's public `hoc:clk` IPC, perform the scan, and restore the previous overrides afterward.
 
 Progress is stored at:
 
@@ -240,7 +282,7 @@ Final results are stored at:
 
 ## Requirements
 
-- Nintendo Switch **Mariko / Switch OLED**
+- Nintendo Switch **Mariko / Switch V2 / Lite / OLED**
 - Atmosphere CFW
 - Horizon OC installed and working
 - Hekate strongly recommended for boot-failure recovery
@@ -294,7 +336,9 @@ Prepare the Battery profile before tuning using the exact guide starting values 
 - **HP Mode: OFF**
 - **RAM Max Clock: 1600 MHz**
 - **VDD2: 1175 mV**
-- **VDDQ: 600 mV**
+- **VDDQ: automatically selected from detected RAM**
+  - **640 mV:** NEE/x267, AA-MGCL, AM-MGCJ, AB-MGCL, NME
+  - **600 mV:** WT:B, WT:F, WT:E
 
 ### CPU Settings
 
@@ -302,8 +346,6 @@ Prepare the Battery profile before tuning using the exact guide starting values 
   - current Mariko HOC builds show **1963 MHz** as the lowest selectable CPU Max Clock
 - **Low VMIN: 620 mV**
 - **High VMIN: 750 mV**
-
-### CPU UV
 
 - **CPU UV Table: 1683 MHz Tbreak**
 - **Low UV: 0**
@@ -314,9 +356,7 @@ Prepare the Battery profile before tuning using the exact guide starting values 
 - **CPU Boost Clock: lowest selectable value**
   - stock Nintendo Boost target used by this workflow is **1785 MHz**
 
-After changing persistent HOC/Toolkit settings:
-
-**Reboot CFW -> reopen the Wizard**
+The Wizard verifies persistent HOC values before rebooting. When the requested value is detected, a green confirmation is shown and **A** requests the restart. After reopening, confirm whether the console booted normally before the Wizard continues to the stability test.
 
 ---
 
@@ -332,8 +372,9 @@ After changing persistent HOC/Toolkit settings:
    - -5 mV per search step
    - hard Wizard floor: **570 mV**
    - quick boundary search at **510 / 384 / 1331.2**
-   - dynamic floor sweep at 510/612/714/816/918/1020
-   - 1-hour confirmation at the highest clock still actually on the VMIN floor
+   - full voltage scan at 510/612/714/816/918/1020 with visible 3-sample progress
+   - group the measured values into distinct 5 mV CPU-voltage regions
+   - 1-hour confirmation at the **highest frequency of every detected voltage region**
    - then verify Home, Sleep/Wake, game launch/close
 
 3. **RAM VDDQ**
@@ -405,9 +446,21 @@ Normal built-in test stages:
 - **A** — start built-in test
 - **+** — known PASS / skip test
 - **X** — known FAIL / skip test
-- **Y** — DID NOT BOOT on quick-search stages
 - **B** — exit and save progress
 - **Minus** — reset Wizard progress
+
+When a persistent Horizon OC value must change:
+
+- **A** — verify the requested value against Horizon OC
+- if correct, a green confirmation screen appears
+- **A** again — request console restart
+- after reopening: **A = booted normally**, **X = did not boot**, **B = decide later**
+
+Automatic Low VMIN voltage scan:
+
+- **A** — start the complete automatic 510 -> 1020 MHz scan
+- no manual Temporary Override changes are required during the scan
+- after completion, **A** continues to voltage-region validation
 
 During a running stress test:
 
@@ -428,9 +481,11 @@ When the workflow is complete, the Wizard writes:
 
 It contains:
 
+- detected RAM module and VDDQ starting point
 - CPU Low UV
 - CPU Low VMIN
 - dynamically detected highest Low VMIN floor clock when available
+- every detected CPU voltage region and its highest validated frequency
 - RAM VDDQ
 - RAM VDD2
 - CPU High UV

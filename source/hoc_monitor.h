@@ -33,14 +33,15 @@ typedef struct {
 
 typedef struct {
     u32 apiVersion;
-    u8 raw400_411[12];
+    u8 raw396_411[16];
+    s32 consoleTypeAt404;
     s32 consoleTypeAt408;
+    u8 idAt400;
+    u8 is8At401;
     u8 idAt403;
     u8 is8At404;
-    u8 idAt404;
-    u8 is8At405;
+    bool id400Known;
     bool id403Known;
-    bool id404Known;
 } HocMonHardwareDebug;
 
 typedef struct {

@@ -968,21 +968,24 @@ void renderHardwareDetection() {
     if (R_SUCCEEDED(g_hardwareDebugRc)) {
         uiPrintf(8,  "DEBUG - please photograph this screen");
         uiPrintf(9,  "HOC API : %u", g_hardwareDebug.apiVersion);
-        uiPrintf(10, "Raw 400-405: %02X %02X %02X %02X %02X %02X",
-                 g_hardwareDebug.raw400_411[0], g_hardwareDebug.raw400_411[1],
-                 g_hardwareDebug.raw400_411[2], g_hardwareDebug.raw400_411[3],
-                 g_hardwareDebug.raw400_411[4], g_hardwareDebug.raw400_411[5]);
-        uiPrintf(11, "Raw 406-411: %02X %02X %02X %02X %02X %02X",
-                 g_hardwareDebug.raw400_411[6], g_hardwareDebug.raw400_411[7],
-                 g_hardwareDebug.raw400_411[8], g_hardwareDebug.raw400_411[9],
-                 g_hardwareDebug.raw400_411[10], g_hardwareDebug.raw400_411[11]);
-        uiPrintf(13, "console@408 : %d", g_hardwareDebug.consoleTypeAt408);
-        uiPrintf(14, "ID@403:%u  8GB@404:%u  known:%s",
+        uiPrintf(10, "Raw 396-403: %02X %02X %02X %02X %02X %02X %02X %02X",
+                 g_hardwareDebug.raw396_411[0], g_hardwareDebug.raw396_411[1],
+                 g_hardwareDebug.raw396_411[2], g_hardwareDebug.raw396_411[3],
+                 g_hardwareDebug.raw396_411[4], g_hardwareDebug.raw396_411[5],
+                 g_hardwareDebug.raw396_411[6], g_hardwareDebug.raw396_411[7]);
+        uiPrintf(11, "Raw 404-411: %02X %02X %02X %02X %02X %02X %02X %02X",
+                 g_hardwareDebug.raw396_411[8], g_hardwareDebug.raw396_411[9],
+                 g_hardwareDebug.raw396_411[10], g_hardwareDebug.raw396_411[11],
+                 g_hardwareDebug.raw396_411[12], g_hardwareDebug.raw396_411[13],
+                 g_hardwareDebug.raw396_411[14], g_hardwareDebug.raw396_411[15]);
+        uiPrintf(13, "console@404:%d  console@408:%d",
+                 g_hardwareDebug.consoleTypeAt404, g_hardwareDebug.consoleTypeAt408);
+        uiPrintf(14, "2.6.0  ID@400:%u  8GB@401:%u  known:%s",
+                 g_hardwareDebug.idAt400, g_hardwareDebug.is8At401,
+                 g_hardwareDebug.id400Known ? "YES" : "NO");
+        uiPrintf(15, "current ID@403:%u 8GB@404:%u known:%s",
                  g_hardwareDebug.idAt403, g_hardwareDebug.is8At404,
                  g_hardwareDebug.id403Known ? "YES" : "NO");
-        uiPrintf(15, "ID@404:%u  8GB@405:%u  known:%s",
-                 g_hardwareDebug.idAt404, g_hardwareDebug.is8At405,
-                 g_hardwareDebug.id404Known ? "YES" : "NO");
     } else {
         uiPrintf(8, "Debug read failed: 0x%08X", g_hardwareDebugRc);
     }

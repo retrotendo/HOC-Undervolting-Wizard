@@ -87,7 +87,9 @@ enum class Stage : int {
     RamBoostValidate,
     // beta.16: appended to keep every previous persisted stage number valid.
     HardwareDetection,
-    LowVminPlateauValidate
+    LowVminPlateauValidate,
+    // beta.25: LowUvQuick is boot-limit discovery; validation is separate.
+    LowUvValidateQuick
 };
 
 struct WizardState {
@@ -221,7 +223,8 @@ const char* stageName(Stage s) {
     switch (s) {
         case Stage::HardwareDetection: return "Hardware Detection";
         case Stage::Preparation: return "Preparation";
-        case Stage::LowUvQuick: return "CPU Low UV - Quick Search";
+        case Stage::LowUvQuick: return "CPU Low UV - Boot Search";
+        case Stage::LowUvValidateQuick: return "CPU Low UV - Quick Validation";
         case Stage::LowUvLong: return "CPU Low UV - 1 Hour Validation";
         case Stage::LowVminQuick: return "CPU Low VMIN - Quick Search @ 510";
         case Stage::LowVminLong: return "CPU Low VMIN - Floor Sweep @ 510";
@@ -255,7 +258,7 @@ const char* stageName(Stage s) {
 
 bool testPlan(Stage s, stress::Kind& kind, int& seconds) {
     switch (s) {
-        case Stage::LowUvQuick:
+        case Stage::LowUvValidateQuick:
         case Stage::LowVminQuick:
         case Stage::HighUvQuick:
             kind = stress::Kind::Cpu; seconds = 60; return true;
@@ -289,6 +292,7 @@ bool testPlan(Stage s, stress::Kind& kind, int& seconds) {
 bool overridePlan(Stage s, OverrideExpectation& e) {
     switch (s) {
         case Stage::LowUvQuick:
+        case Stage::LowUvValidateQuick:
         case Stage::LowUvLong:
         case Stage::Ram1331Validate:
         case Stage::NormalMatrixValidate:
@@ -681,6 +685,7 @@ u32 defaultConfigMaskForStage(Stage st) {
     switch (st) {
         case Stage::Preparation: return Config_Prepare;
         case Stage::LowUvQuick:
+        case Stage::LowUvValidateQuick:
         case Stage::LowUvLong: return Config_LowUv;
         case Stage::LowVminQuick: return Config_LowVmin;
         case Stage::VddqQuick:
@@ -700,6 +705,8 @@ u32 activeConfigMask() {
 }
 
 int targetLowUv() {
+    // LowUvQuick is the boot-limit search. Validation uses the last value
+    // that actually booted.
     return g.stage == Stage::LowUvQuick ? g.lowUvTest : g.lowUvGood;
 }
 int targetLowVmin() {
@@ -766,6 +773,41 @@ bool readHocConfigIni(HocMonConfig& out) {
     }
 
     return sawValuesSection;
+}
+
+bool preparationFixedSettingsMatch(const HocMonConfig& c) {
+    return !c.uncappedClocks && !c.hpMode &&
+           c.ramMaxKHz == 1600000U &&
+           c.cpuMaxKHz == 1963500U &&
+           c.tableConf == 3 &&
+           c.cpuBoostKHz == 1785000U &&
+           c.vdd2Uv != 0 && c.vddqUv != 0 &&
+           c.lowVminMv != 0 && c.highVminMv != 0;
+}
+
+bool captureCurrentSettingsBaseline() {
+    g_configCheck = ConfigCheckState{};
+    g_configCheck.mask = Config_Prepare;
+    g_configCheck.readOk = readHocConfigIni(g_configCheck.current);
+    g_configCheck.rc = g_configCheck.readOk ? 0 : 0xF024;
+    if (!g_configCheck.readOk || !preparationFixedSettingsMatch(g_configCheck.current))
+        return false;
+
+    const HocMonConfig& c = g_configCheck.current;
+    g.lowUvGood = std::max(0, c.lowUv);
+    g.lowUvTest = (g.lowUvGood < LOW_UV_MAX) ? g.lowUvGood + 1 : g.lowUvGood;
+    g.lowVminGood = c.lowVminMv;
+    g.lowVminTest = (g.lowVminGood > LOW_VMIN_MIN_MV) ? g.lowVminGood - LOW_VMIN_STEP_MV : g.lowVminGood;
+    g.vddqGood = (int)(c.vddqUv / 1000U);
+    g.vddqTest = (g.vddqGood > VDDQ_MIN_MV) ? g.vddqGood - VDDQ_STEP_MV : g.vddqGood;
+    g.vdd2GoodUv = (int)c.vdd2Uv;
+    g.vdd2TestUv = (g.vdd2GoodUv > VDD2_MIN_UV) ? g.vdd2GoodUv - VDD2_STEP_UV : g.vdd2GoodUv;
+    g.highUvGood = std::max(0, c.highUv);
+    g.highUvTest = (g.highUvGood < HIGH_UV_MAX) ? g.highUvGood + 1 : g.highUvGood;
+    g.stageReadyAfterBoot = false;
+    g.pendingConfigMask = Config_None;
+    saveState();
+    return true;
 }
 
 bool configMatchesCurrent(u32 mask, const HocMonConfig& c) {
@@ -898,7 +940,8 @@ const char* compactStepName(Stage s) {
     switch (s) {
         case Stage::HardwareDetection: return "Hardware Detection";
         case Stage::Preparation: return "Preparation";
-        case Stage::LowUvQuick: return "CPU Low UV";
+        case Stage::LowUvQuick: return "CPU Low UV - Boot Search";
+        case Stage::LowUvValidateQuick: return "CPU Low UV - Quick Test";
         case Stage::LowUvLong: return "CPU Low UV - Validate";
         case Stage::LowVminQuick: return "CPU Low VMIN";
         case Stage::LowVminLong: return "CPU Low VMIN - Clock Check";
@@ -1134,19 +1177,22 @@ void renderConfigPrompt() {
     uiPrintf(1, "\x1b[31mBattery Wizard - SETTING NOT READY\x1b[0m");
     uiPrintf(2, "Step : %s", compactStepName(g.stage));
     uiPrintf(3, "----------------------------------------");
-    if (g.stage == Stage::Preparation)
-        uiPrintf(4, "[33mY : RAW CONFIG DEBUG[0m");
+    if (g.stage == Stage::Preparation) {
+        uiPrintf(4, "X : Use current tuning as baseline");
+        uiPrintf(5, "\x1b[33mY : RAW CONFIG DEBUG\x1b[0m");
+    }
     if (!g_configCheck.readOk) {
-        uiPrintf(5, "Could not read Horizon OC config.ini");
-        uiPrintf(6, "Result : 0x%08X", g_configCheck.rc);
-        uiPrintf(9, "A : Check again");
-        uiPrintf(10, "B : Back");
+        const int r = (g.stage == Stage::Preparation) ? 7 : 5;
+        uiPrintf(r, "Could not read Horizon OC config.ini");
+        uiPrintf(r + 1, "Result : 0x%08X", g_configCheck.rc);
+        uiPrintf(r + 4, "A : Check again");
+        uiPrintf(r + 5, "B : Back");
         consoleUpdate(nullptr);
         return;
     }
 
     const u32 m = g_configCheck.mask;
-    int row = 5;
+    int row = (g.stage == Stage::Preparation) ? 7 : 5;
     if (m & Config_Prepare) {
         uiPrintf(row++, "Fix these Preparation values:");
         row++;
@@ -1251,8 +1297,9 @@ void renderPreparation() {
     uiPrintf(26, " - CPU Boost       : Lowest selectable / 1785");
 
     uiPrintf(29, "A : Check settings");
-    uiPrintf(30, "+ : Known PASS / Skip");
-    uiPrintf(31, "B : Exit    - : Reset");
+    uiPrintf(30, "X : Use current settings as baseline");
+    uiPrintf(31, "+ : Known PASS / Skip");
+    uiPrintf(32, "B : Exit    - : Reset");
 }
 
 
@@ -1539,18 +1586,27 @@ void handlePass() {
         case Stage::LowUvQuick:
             g.lowUvGood = g.lowUvTest;
             if (g.lowUvTest >= LOW_UV_MAX) {
-                g.stage = Stage::LowUvLong;
-                g.stageReadyAfterBoot = true; // same already-booted value
+                g.stage = Stage::LowUvValidateQuick;
+                g.stageReadyAfterBoot = true;
             } else {
                 ++g.lowUvTest;
                 g.stageReadyAfterBoot = false;
             }
             break;
+        case Stage::LowUvValidateQuick:
+            g.stage = Stage::LowUvLong;
+            g.stageReadyAfterBoot = true;
+            break;
         case Stage::LowUvLong:
             g.recoveryNeeded = false;
-            g.stage = Stage::LowVminQuick;
-            g.lowVminTest = g.lowVminGood - LOW_VMIN_STEP_MV;
-            g.stageReadyAfterBoot = false;
+            if (g.lowVminGood <= LOW_VMIN_MIN_MV) {
+                restartVminSweep(false);
+                g.stageReadyAfterBoot = true;
+            } else {
+                g.stage = Stage::LowVminQuick;
+                g.lowVminTest = g.lowVminGood - LOW_VMIN_STEP_MV;
+                g.stageReadyAfterBoot = false;
+            }
             break;
         case Stage::LowVminQuick:
             g.lowVminGood = g.lowVminTest;
@@ -1581,9 +1637,14 @@ void handlePass() {
         case Stage::LowVminPlateauValidate:
             ++g.vminValidateIndex;
             if (g.vminValidateIndex >= g.vminValidateCount) {
-                g.stage = Stage::VddqQuick;
-                g.vddqTest = g.vddqStartMv - VDDQ_STEP_MV;
-                g.stageReadyAfterBoot = false;
+                if (g.vddqGood <= VDDQ_MIN_MV) {
+                    g.stage = Stage::VddqLong;
+                    g.stageReadyAfterBoot = true;
+                } else {
+                    g.stage = Stage::VddqQuick;
+                    g.vddqTest = g.vddqGood - VDDQ_STEP_MV;
+                    g.stageReadyAfterBoot = false;
+                }
             }
             break;
         case Stage::VddqQuick:
@@ -1598,9 +1659,14 @@ void handlePass() {
             break;
         case Stage::VddqLong:
             g.recoveryNeeded = false;
-            g.stage = Stage::Vdd2Quick;
-            g.vdd2TestUv = STOCK_VDD2_UV - VDD2_STEP_UV;
-            g.stageReadyAfterBoot = false;
+            if (g.vdd2GoodUv <= VDD2_MIN_UV) {
+                g.stage = Stage::Vdd2Long;
+                g.stageReadyAfterBoot = true;
+            } else {
+                g.stage = Stage::Vdd2Quick;
+                g.vdd2TestUv = g.vdd2GoodUv - VDD2_STEP_UV;
+                g.stageReadyAfterBoot = false;
+            }
             break;
         case Stage::Vdd2Quick:
             g.vdd2GoodUv = g.vdd2TestUv;
@@ -1622,9 +1688,14 @@ void handlePass() {
             g.stage = Stage::Ram1331Validate;
             break;
         case Stage::Ram1331Validate:
-            g.stage = Stage::HighUvQuick;
-            g.highUvTest = 1;
-            g.stageReadyAfterBoot = false;
+            if (g.highUvGood >= HIGH_UV_MAX) {
+                g.stage = Stage::HighUvLong;
+                g.stageReadyAfterBoot = true;
+            } else {
+                g.stage = Stage::HighUvQuick;
+                g.highUvTest = g.highUvGood + 1;
+                g.stageReadyAfterBoot = false;
+            }
             break;
         case Stage::HighUvQuick:
             g.highUvGood = g.highUvTest;
@@ -1662,8 +1733,13 @@ void handleFail(bool didNotBoot) {
             g.recoveryNeeded = didNotBoot;
             break;
         case Stage::LowUvQuick:
-            g.stage = Stage::LowUvLong;
+            g.stage = Stage::LowUvValidateQuick;
             g.recoveryNeeded = didNotBoot;
+            g.pendingConfigMask = Config_LowUv;
+            break;
+        case Stage::LowUvValidateQuick:
+            if (g.lowUvGood > 0) --g.lowUvGood;
+            g.recoveryNeeded = false;
             g.pendingConfigMask = Config_LowUv;
             break;
         case Stage::LowUvLong:
@@ -2025,8 +2101,16 @@ int main(int argc, char** argv) {
                 g_bootPrompt = false;
                 g.pendingConfigMask = Config_None;
                 if (g.stage == Stage::Preparation) {
-                    g.stage = Stage::LowUvQuick;
-                    g.stageReadyAfterBoot = false;
+                    if (g.lowUvGood >= LOW_UV_MAX) {
+                        g.stage = Stage::LowUvValidateQuick;
+                        g.stageReadyAfterBoot = true;
+                    } else {
+                        g.stage = Stage::LowUvQuick;
+                        g.lowUvTest = g.lowUvGood + 1;
+                        g.stageReadyAfterBoot = false;
+                    }
+                } else if (g.stage == Stage::LowUvQuick) {
+                    handlePass();
                 } else {
                     g.stageReadyAfterBoot = true;
                 }
@@ -2069,7 +2153,7 @@ int main(int argc, char** argv) {
         if (g_interruptedPrompt) {
             if (k & HidNpadButton_A) {
                 g.testRunning = false;
-                if (g.testStage >= 0 && g.testStage <= static_cast<int>(Stage::LowVminPlateauValidate))
+                if (g.testStage >= 0 && g.testStage <= static_cast<int>(Stage::LowUvValidateQuick))
                     g.stage = static_cast<Stage>(g.testStage);
                 g.testKind = g.testDurationSec = g.testStage = 0;
                 saveState();
@@ -2078,7 +2162,7 @@ int main(int argc, char** argv) {
                 redraw = true;
             } else if (k & HidNpadButton_X) {
                 g.testRunning = false;
-                if (g.testStage >= 0 && g.testStage <= static_cast<int>(Stage::LowVminPlateauValidate))
+                if (g.testStage >= 0 && g.testStage <= static_cast<int>(Stage::LowUvValidateQuick))
                     g.stage = static_cast<Stage>(g.testStage);
                 g.testKind = g.testDurationSec = g.testStage = 0;
                 saveState();
@@ -2107,7 +2191,13 @@ int main(int argc, char** argv) {
         }
 
         if (g_configPrompt) {
-            if ((k & HidNpadButton_Y) && g.stage == Stage::Preparation) {
+            if ((k & HidNpadButton_X) && g.stage == Stage::Preparation) {
+                if (captureCurrentSettingsBaseline()) {
+                    g_configPrompt = false;
+                    g_rebootConfirm = true;
+                }
+                redraw = true;
+            } else if ((k & HidNpadButton_Y) && g.stage == Stage::Preparation) {
                 openConfigDebug();
                 redraw = true;
             } else if (k & HidNpadButton_A) {
@@ -2212,6 +2302,10 @@ int main(int argc, char** argv) {
                 else handlePass();
                 redraw = true;
             }
+        } else if (g.stage == Stage::Preparation && (k & HidNpadButton_X)) {
+            if (captureCurrentSettingsBaseline()) g_rebootConfirm = true;
+            else g_configPrompt = true;
+            redraw = true;
         } else if (k & HidNpadButton_Plus) {
             if (isVminSweepStage(g.stage)) {
                 runAutomaticVminScan();

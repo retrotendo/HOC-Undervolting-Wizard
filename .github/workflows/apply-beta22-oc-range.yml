@@ -1,0 +1,35 @@
+name: Apply beta22 OC range display
+
+on:
+  push:
+    branches:
+      - beta22-hardware-oc-range
+    paths:
+      - '.github/workflows/apply-beta22-oc-range.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch-build-commit:
+    runs-on: ubuntu-latest
+    container:
+      image: devkitpro/devkita64:latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: beta22-hardware-oc-range
+          fetch-depth: 0
+      - name: Apply patch
+        run: python3 .github/scripts/apply_beta22.py
+      - name: Build
+        run: make -j2
+      - name: Commit patched source
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git -C "$GITHUB_WORKSPACE" config user.name "github-actions[bot]"
+          git -C "$GITHUB_WORKSPACE" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "$GITHUB_WORKSPACE" add source/main.cpp Makefile UPDATE.txt
+          git -C "$GITHUB_WORKSPACE" commit -m "Show Horizon OC RAM guide ranges in beta22"
+          git -C "$GITHUB_WORKSPACE" push origin HEAD:beta22-hardware-oc-range

@@ -51,6 +51,7 @@ constexpr int LOW_VMIN_STEP_MV = 5;
 constexpr int VDDQ_STEP_MV = 10;
 constexpr u32 VMIN_FLOOR_TOLERANCE_UV = 5000U;
 constexpr int VDD2_STEP_UV = 12500;
+constexpr int UI_COL = 36;
 
 enum class Stage : int {
     Preparation = 0,
@@ -761,8 +762,6 @@ void writeResults() {
     f << "Nintendo Boost target: 1785 / 76.8 / 1600.\n";
 }
 
-constexpr int UI_COL = 36;
-
 void uiPrintf(int row, const char* fmt, ...) {
     std::printf("\x1b[%d;%dH", row, UI_COL);
     va_list args;
@@ -846,8 +845,7 @@ void footerTest(int row) {
     uiPrintf(row + 1, "A : Start Test");
     uiPrintf(row + 2, "+ : Known PASS / Skip");
     uiPrintf(row + 3, "X : Known FAIL / Skip");
-    if (isQuickStage(g.stage)) uiPrintf(row + 4, "Y : Did Not Boot");
-    uiPrintf(row + 5, "B : Exit    - : Reset");
+    uiPrintf(row + 4, "B : Exit    - : Reset");
 }
 
 
@@ -926,6 +924,11 @@ void renderConfigPrompt() {
     } else if (m & Config_LowVmin) {
         printSingleConfigCheck(row, "CPU Low VMIN", formatMv(targetLowVmin()), formatMv(g_configCheck.current.lowVminMv), g_configCheck.current.lowVminMv == targetLowVmin());
         row += 5;
+    } else if ((m & Config_Vddq) && (m & Config_Vdd2)) {
+        printSingleConfigCheck(row, "RAM VDDQ", formatMv(targetVddqMv()), formatMv((int)(g_configCheck.current.vddqUv / 1000U)), g_configCheck.current.vddqUv == (u32)targetVddqMv() * 1000U);
+        row += 5;
+        printSingleConfigCheck(row, "RAM VDD2", formatVdd2(targetVdd2Uv()), formatVdd2((int)g_configCheck.current.vdd2Uv), g_configCheck.current.vdd2Uv == (u32)targetVdd2Uv());
+        row += 5;
     } else if (m & Config_Vddq) {
         printSingleConfigCheck(row, "RAM VDDQ", formatMv(targetVddqMv()), formatMv((int)(g_configCheck.current.vddqUv / 1000U)), g_configCheck.current.vddqUv == (u32)targetVddqMv() * 1000U);
         row += 5;
@@ -954,6 +957,8 @@ void renderRebootConfirm() {
         uiPrintf(6, "\x1b[32mLow UV %d is set.\x1b[0m", targetLowUv());
     else if (m & Config_LowVmin)
         uiPrintf(6, "\x1b[32mLow VMIN %d mV is set.\x1b[0m", targetLowVmin());
+    else if ((m & Config_Vddq) && (m & Config_Vdd2))
+        uiPrintf(6, "\x1b[32mVDDQ %d mV + VDD2 %s are set.\x1b[0m", targetVddqMv(), formatVdd2(targetVdd2Uv()).c_str());
     else if (m & Config_Vddq)
         uiPrintf(6, "\x1b[32mVDDQ %d mV is set.\x1b[0m", targetVddqMv());
     else if (m & Config_Vdd2)
@@ -1005,14 +1010,16 @@ void renderTestStage() {
     if (configMask != Config_None) {
         uiPrintf(5, "@ Horizon OC");
         uiPrintf(7, (configMask & (Config_Vddq | Config_Vdd2)) ? "RAM Settings:" : "CPU Settings:");
-        if (configMask & Config_LowUv) uiPrintf(8, " - Low UV   : %d", targetLowUv());
-        if (configMask & Config_LowVmin) uiPrintf(8, " - Low VMIN : %d mV", targetLowVmin());
-        if (configMask & Config_Vddq) uiPrintf(8, " - VDDQ     : %d mV", targetVddqMv());
-        if (configMask & Config_Vdd2) uiPrintf(8, " - VDD2     : %s", formatVdd2(targetVdd2Uv()).c_str());
-        if (configMask & Config_HighUv) uiPrintf(8, " - High UV  : %d", targetHighUv());
-        uiPrintf(11, "A : Check setting");
-        uiPrintf(12, "+ : Known PASS / Skip");
-        uiPrintf(13, "B : Exit    - : Reset");
+        int setRow = 8;
+        if (configMask & Config_LowUv) uiPrintf(setRow++, " - Low UV   : %d", targetLowUv());
+        if (configMask & Config_LowVmin) uiPrintf(setRow++, " - Low VMIN : %d mV", targetLowVmin());
+        if (configMask & Config_Vddq) uiPrintf(setRow++, " - VDDQ     : %d mV", targetVddqMv());
+        if (configMask & Config_Vdd2) uiPrintf(setRow++, " - VDD2     : %s", formatVdd2(targetVdd2Uv()).c_str());
+        if (configMask & Config_HighUv) uiPrintf(setRow++, " - High UV  : %d", targetHighUv());
+        setRow += 2;
+        uiPrintf(setRow++, "A : Check setting");
+        uiPrintf(setRow++, "+ : Known PASS / Skip");
+        uiPrintf(setRow++, "B : Exit    - : Reset");
         return;
     }
 

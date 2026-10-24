@@ -1,3 +1,16 @@
+## v0.4.0-beta.16
+- Detect the installed Mariko DRAM through Horizon OC before Preparation and choose the RAM-specific VDDQ baseline automatically (600 or 640 mV).
+- Read persistent Horizon OC config values before every reboot-required tuning step.
+- Block reboot if the requested value is not actually set; show Required / Current / WRONG.
+- Show a green confirmation when the requested value is detected, then reboot only after a second A-button confirmation.
+- Persist the reboot handoff and ask whether CFW booted normally when the Wizard is reopened.
+- Separate setting pages from test pages so already-confirmed UV/voltage values are not repeatedly shown.
+- Add a visible 3-sample progress bar to CPU voltage scans.
+- Scan all 510/612/714/816/918/1020 MHz points and group the observed CPU voltages into 5 mV regions.
+- Run the 1-hour CPU validation at the highest frequency of **each** detected voltage region instead of only the Low VMIN floor region.
+- Record detected RAM and CPU voltage regions in `results.txt`.
+- Keep beta.15's vertical Required / Current / OK-WRONG Temporary Override blocker.
+
 ## v0.4.0-beta.15
 - Redesign TEST BLOCKED override screen into vertical Required / Current / Status blocks.
 - Show actual Horizon OC override values for CPU/GPU/RAM.

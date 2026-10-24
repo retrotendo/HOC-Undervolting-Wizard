@@ -16,4 +16,4 @@ if needle not in s:
 s = s.replace(needle, replacement, 1)
 
 p.write_text(s)
-print('beta16 patch helper repaired')
+print('beta16 patch helper repaired - rerun')

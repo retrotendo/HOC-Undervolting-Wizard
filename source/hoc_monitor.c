@@ -1,15 +1,13 @@
 /*
- * HOC Undervolting Wizard - Horizon OC monitor.
+ * HOC Undervolting Wizard - Horizon OC monitor/control.
  *
  * The IPC commands and context/config layouts are adapted from Horizon-OC
  * (common/include/hocclk/{clock_manager,config,ipc}.h and client/ipc.c).
  * Copyright (c) Souldbminer, Lightos_ and Horizon OC Contributors.
  * Horizon-OC distributes this interface under GNU GPL version 2.
  *
- * Modifications for HOC Undervolting Wizard, 2026:
- * - read-only clock/override/voltage access;
- * - read DRAM ID for automatic VDDQ starting-point selection;
- * - read persistent HOC/KIP settings so reboot steps can be verified first.
+ * Persistent tuning settings are only read. The only write operation exposed
+ * here is Horizon OC's temporary CPU/GPU/RAM override command.
  *
  * SPDX-License-Identifier: GPL-2.0-only
  */
@@ -24,6 +22,7 @@
 #define HOCCLK_IPC_SERVICE_NAME "hoc:clk"
 #define HOCCLK_IPC_CMD_GET_API_VERSION 0
 #define HOCCLK_IPC_CMD_GET_CURRENT_CONTEXT 2
+#define HOCCLK_IPC_CMD_SET_OVERRIDE 8
 #define HOCCLK_IPC_CMD_GET_CONFIG_VALUES 9
 #define HOCCLK_API_VERSION_REQUIRED 2
 
@@ -34,7 +33,6 @@
 #define HOCCLK_STABLE_VOLTAGE_COUNT 7
 #define HOCCLK_VOLTAGE_CPU_INDEX 2
 
-/* Current API-v2 non-stable context counts. */
 #define HOCCLK_CONTEXT_MODULE_COUNT 5
 #define HOCCLK_CONTEXT_THERMAL_COUNT 12
 #define HOCCLK_CONTEXT_POWER_COUNT 2
@@ -52,11 +50,6 @@ typedef struct {
     u32 voltages[HOCCLK_STABLE_VOLTAGE_COUNT];
 } HocMonStableContext;
 
-/*
- * Prefix of Horizon OC's current HocClkContext through consoleType.
- * The first stable block is ABI-stable. The DRAM fields after it are API-v2
- * fields; hocmonGetHardware additionally validates API version and ID range.
- */
 typedef struct {
     HocMonStableContext stable;
     u64 applicationId;
@@ -87,9 +80,8 @@ typedef struct {
 } HocMonRawContext;
 
 _Static_assert(sizeof(HocMonRawContext) == 0x500, "Horizon OC context size mismatch");
-_Static_assert(offsetof(HocMonContextPrefix, dramID) == 404, "Unexpected Horizon OC API-v2 context layout");
+_Static_assert(offsetof(HocMonContextPrefix, dramID) == 407, "Unexpected Horizon OC API-v2 context layout");
 
-/* Relevant indexes from Horizon OC HocClkConfigValue. */
 enum {
     CFG_UNCAPPED_CLOCKS = 5,
     CFG_HP_MODE = 40,
@@ -105,10 +97,14 @@ enum {
     CFG_CPU_BOOST_KHZ = 85,
 };
 
-/* Oversized read-only buffer. The HOC service only requires >= its current list size. */
 typedef struct {
     u64 values[256];
 } HocMonRawConfig;
+
+typedef struct {
+    s32 module;
+    u32 hz;
+} HocMonSetOverrideArgs;
 
 static Result hocmonOpen(Service* srv, u32* apiVersion)
 {
@@ -154,14 +150,12 @@ Result hocmonGetClocks(HocMonClocks* out)
     if (R_FAILED(rc))
         return rc;
 
-    /* Horizon-OC stable module order: CPU=0, GPU=1, MEM=2. */
     for (int i = 0; i < 3; ++i) {
         out->targetHz[i] = ctx.stable.freqs[i];
         out->realHz[i] = ctx.stable.realFreqs[i];
         out->overrideHz[i] = ctx.stable.overrideFreqs[i];
     }
 
-    /* Stable voltage order: SOC, VDD2, CPU, GPU, VDDQ, display, battery. */
     out->cpuVoltageUv = ctx.stable.voltages[HOCCLK_VOLTAGE_CPU_INDEX];
     return 0;
 }
@@ -189,7 +183,6 @@ Result hocmonGetHardware(HocMonHardware* out)
         return rc;
 
     const HocMonContextPrefix* ctx = (const HocMonContextPrefix*)&raw;
-    /* Current HOC IDs are 0..34 and console types 0..3. Reject layout garbage. */
     if (ctx->dramID > 34 || ctx->consoleType < 0 || ctx->consoleType > 3)
         return 3;
 
@@ -238,4 +231,29 @@ Result hocmonGetConfig(HocMonConfig* out)
     out->cpuMaxKHz = (u32)cfg.values[CFG_CPU_MAX_KHZ];
     out->cpuBoostKHz = (u32)cfg.values[CFG_CPU_BOOST_KHZ];
     return 0;
+}
+
+Result hocmonSetOverride(int module, u32 hz)
+{
+    if (module < 0 || module > 2)
+        return 1;
+
+    Service srv = {0};
+    Result rc = hocmonOpen(&srv, NULL);
+    if (R_FAILED(rc))
+        return rc;
+
+    HocMonSetOverrideArgs args = { .module = module, .hz = hz };
+    rc = serviceDispatchIn(&srv, HOCCLK_IPC_CMD_SET_OVERRIDE, args);
+    serviceClose(&srv);
+    return rc;
+}
+
+Result hocmonSetOverrides(u32 cpuHz, u32 gpuHz, u32 ramHz)
+{
+    Result rc = hocmonSetOverride(0, cpuHz);
+    if (R_FAILED(rc)) return rc;
+    rc = hocmonSetOverride(1, gpuHz);
+    if (R_FAILED(rc)) return rc;
+    return hocmonSetOverride(2, ramHz);
 }

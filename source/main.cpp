@@ -193,6 +193,8 @@ ConfigCheckState g_configCheck;
 Result g_rebootError = 0;
 Result g_hardwareReadRc = 0;
 HocMonHardware g_hardware{};
+Result g_hardwareDebugRc = 0;
+HocMonHardwareDebug g_hardwareDebug{};
 
 bool g_vminScanScreen = false;
 bool g_vminScanSuccess = false;
@@ -649,7 +651,9 @@ bool ramTuningAlreadyStarted(Stage st) {
 
 bool detectRamHardware() {
     g_hardware = HocMonHardware{};
+    g_hardwareDebug = HocMonHardwareDebug{};
     g_hardwareReadRc = hocmonGetHardware(&g_hardware);
+    g_hardwareDebugRc = hocmonGetHardwareDebug(&g_hardwareDebug);
     if (R_FAILED(g_hardwareReadRc)) return false;
     const RamProfile p = ramProfileForId(g_hardware.dramId);
     // Icosa = Erista/V1, outside this Mariko Battery guide.
@@ -955,17 +959,38 @@ void renderHardwareDetection() {
         uiPrintf(11, "VDDQ start : %d mV", g.vddqStartMv);
         uiPrintf(14, "A : Continue to Preparation");
         uiPrintf(15, "B : Exit");
-    } else {
-        uiPrintf(6, "\x1b[31mRAM detection failed\x1b[0m");
-        if (R_FAILED(g_hardwareReadRc))
-            uiPrintf(8, "hoc:clk result : 0x%08X", g_hardwareReadRc);
-        else
-            uiPrintf(8, "Unsupported / unknown DRAM ID : %u", g_hardware.dramId);
-        uiPrintf(10, "The Wizard will not guess a VDDQ baseline.");
-        uiPrintf(13, "A : Retry detection");
-        uiPrintf(14, "B : Exit");
+        return;
     }
+
+    uiPrintf(5, "\x1b[31mRAM detection failed\x1b[0m");
+    uiPrintf(6, "hoc:clk result : 0x%08X", g_hardwareReadRc);
+
+    if (R_SUCCEEDED(g_hardwareDebugRc)) {
+        uiPrintf(8,  "DEBUG - please photograph this screen");
+        uiPrintf(9,  "HOC API : %u", g_hardwareDebug.apiVersion);
+        uiPrintf(10, "Raw 400-405: %02X %02X %02X %02X %02X %02X",
+                 g_hardwareDebug.raw400_411[0], g_hardwareDebug.raw400_411[1],
+                 g_hardwareDebug.raw400_411[2], g_hardwareDebug.raw400_411[3],
+                 g_hardwareDebug.raw400_411[4], g_hardwareDebug.raw400_411[5]);
+        uiPrintf(11, "Raw 406-411: %02X %02X %02X %02X %02X %02X",
+                 g_hardwareDebug.raw400_411[6], g_hardwareDebug.raw400_411[7],
+                 g_hardwareDebug.raw400_411[8], g_hardwareDebug.raw400_411[9],
+                 g_hardwareDebug.raw400_411[10], g_hardwareDebug.raw400_411[11]);
+        uiPrintf(13, "console@408 : %d", g_hardwareDebug.consoleTypeAt408);
+        uiPrintf(14, "ID@403:%u  8GB@404:%u  known:%s",
+                 g_hardwareDebug.idAt403, g_hardwareDebug.is8At404,
+                 g_hardwareDebug.id403Known ? "YES" : "NO");
+        uiPrintf(15, "ID@404:%u  8GB@405:%u  known:%s",
+                 g_hardwareDebug.idAt404, g_hardwareDebug.is8At405,
+                 g_hardwareDebug.id404Known ? "YES" : "NO");
+    } else {
+        uiPrintf(8, "Debug read failed: 0x%08X", g_hardwareDebugRc);
+    }
+
+    uiPrintf(18, "A : Retry detection");
+    uiPrintf(19, "B : Exit");
 }
+
 
 void renderBootPrompt() {
     consoleClear();

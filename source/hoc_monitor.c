@@ -211,6 +211,38 @@ static bool hocmonIsKnownMarikoDramId(u8 id)
     }
 }
 
+
+Result hocmonGetHardwareDebug(HocMonHardwareDebug* out)
+{
+    if (!out)
+        return 1;
+    memset(out, 0, sizeof(*out));
+
+    Service srv = {0};
+    u32 api = 0;
+    Result rc = hocmonOpen(&srv, &api);
+    if (R_FAILED(rc))
+        return rc;
+
+    out->apiVersion = api;
+    HocMonRawContext raw;
+    rc = hocmonReadRawContext(&srv, &raw);
+    serviceClose(&srv);
+    if (R_FAILED(rc))
+        return rc;
+
+    const u8* bytes = (const u8*)&raw;
+    memcpy(out->raw400_411, bytes + 400, sizeof(out->raw400_411));
+    memcpy(&out->consoleTypeAt408, bytes + 408, sizeof(out->consoleTypeAt408));
+    out->idAt403 = bytes[403];
+    out->is8At404 = bytes[404];
+    out->idAt404 = bytes[404];
+    out->is8At405 = bytes[405];
+    out->id403Known = hocmonIsKnownMarikoDramId(out->idAt403);
+    out->id404Known = hocmonIsKnownMarikoDramId(out->idAt404);
+    return 0;
+}
+
 Result hocmonGetHardware(HocMonHardware* out)
 {
     if (!out)

@@ -32,6 +32,18 @@ typedef struct {
 } HocMonHardware;
 
 typedef struct {
+    u32 apiVersion;
+    u8 raw400_411[12];
+    s32 consoleTypeAt408;
+    u8 idAt403;
+    u8 is8At404;
+    u8 idAt404;
+    u8 is8At405;
+    bool id403Known;
+    bool id404Known;
+} HocMonHardwareDebug;
+
+typedef struct {
     bool uncappedClocks;
     bool hpMode;
     u32 ramMaxKHz;
@@ -60,6 +72,9 @@ Result hocmonSetOverride(u32 module, u32 hz);
 
 /* Read DRAM identity from Horizon OC API-v2 current context. */
 Result hocmonGetHardware(HocMonHardware* out);
+
+/* Raw context diagnostics for hardware-layout troubleshooting. */
+Result hocmonGetHardwareDebug(HocMonHardwareDebug* out);
 
 /* Read the persistent Horizon OC/KIP values used by the Battery Wizard. */
 Result hocmonGetConfig(HocMonConfig* out);

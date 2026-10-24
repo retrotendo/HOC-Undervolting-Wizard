@@ -503,3 +503,10 @@ The built-in tests improve repeatability, but cannot prove absolute stability. K
 - **switchbrew / libnx authors** — libnx
 
 See `THIRD_PARTY_LICENSES.md` for full notices.
+
+### Guided hardware and reboot flow (beta.16)
+
+The Wizard reads the Horizon OC DRAM ID before Preparation and selects the RAM-specific VDDQ starting point. Persistent voltage/UV changes remain manual in Horizon OC: the Wizard verifies the requested value, shows a green confirmation, and only reboots when the user presses A. After reboot it asks whether the console booted normally before any stress test starts.
+
+The Low VMIN CPU map is automated. The app temporarily controls CPU/GPU/RAM overrides, scans 510 through 1020 MHz, records the observed CPU rail voltage at every point, groups equal voltage plateaus, and validates the highest clock of each detected plateau.
+

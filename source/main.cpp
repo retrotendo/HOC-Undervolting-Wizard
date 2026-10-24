@@ -21,6 +21,7 @@ constexpr const char* STATE     = "sdmc:/switch/HOC-Undervolting-Wizard/state.in
 constexpr const char* STATE_TMP = "sdmc:/switch/HOC-Undervolting-Wizard/state.tmp";
 constexpr const char* RESULTS   = "sdmc:/switch/HOC-Undervolting-Wizard/results.txt";
 constexpr const char* LEGACY_STATE = "sdmc:/switch/HOC-Battery-Wizard/state.ini";
+constexpr const char* HOC_CONFIG_INI = "sdmc:/config/horizon-oc/config.ini";
 
 constexpr int STOCK_LOW_UV = 0;
 constexpr int STOCK_HIGH_UV = 0;
@@ -714,6 +715,59 @@ int targetHighUv() {
     return g.stage == Stage::HighUvQuick ? g.highUvTest : g.highUvGood;
 }
 
+std::string trimIni(const std::string& in) {
+    const size_t first = in.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos) return {};
+    const size_t last = in.find_last_not_of(" \t\r\n");
+    return in.substr(first, last - first + 1);
+}
+
+bool readHocConfigIni(HocMonConfig& out) {
+    out = HocMonConfig{};
+    std::ifstream f(HOC_CONFIG_INI);
+    if (!f) return false;
+
+    bool inValues = false;
+    bool sawValuesSection = false;
+    std::string line;
+    while (std::getline(f, line)) {
+        line = trimIni(line);
+        if (line.empty() || line[0] == ';' || line[0] == '#') continue;
+
+        if (line.front() == '[' && line.back() == ']') {
+            inValues = (line == "[values]");
+            if (inValues) sawValuesSection = true;
+            continue;
+        }
+        if (!inValues) continue;
+
+        const size_t eq = line.find('=');
+        if (eq == std::string::npos) continue;
+        const std::string key = trimIni(line.substr(0, eq));
+        const std::string valueText = trimIni(line.substr(eq + 1));
+        if (key.empty() || valueText.empty()) continue;
+
+        char* end = nullptr;
+        const unsigned long long value = std::strtoull(valueText.c_str(), &end, 0);
+        if (end == valueText.c_str()) continue;
+
+        if (key == "uncapped_clocks") out.uncappedClocks = (value != 0);
+        else if (key == "kip_hp_mode") out.hpMode = (value != 0);
+        else if (key == "mariko_emc_max_clock") out.ramMaxKHz = (u32)value;
+        else if (key == "common_emc_mem_volt") out.vdd2Uv = (u32)value;
+        else if (key == "mariko_emc_vddq_volt") out.vddqUv = (u32)value;
+        else if (key == "mariko_cpu_uv_low") out.lowUv = (int)value;
+        else if (key == "mariko_cpu_uv_high") out.highUv = (int)value;
+        else if (key == "kip_table_conf") out.tableConf = (int)value;
+        else if (key == "mariko_cpu_low_vmin") out.lowVminMv = (int)value;
+        else if (key == "mariko_cpu_high_vmin") out.highVminMv = (int)value;
+        else if (key == "mariko_cpu_max_clock") out.cpuMaxKHz = (u32)value;
+        else if (key == "mariko_cpu_boost_clock") out.cpuBoostKHz = (u32)value;
+    }
+
+    return sawValuesSection;
+}
+
 bool configMatchesCurrent(u32 mask, const HocMonConfig& c) {
     if (mask & Config_Prepare) {
         return !c.uncappedClocks && !c.hpMode && c.ramMaxKHz == 1600000U &&
@@ -734,8 +788,8 @@ bool configMatchesCurrent(u32 mask, const HocMonConfig& c) {
 bool verifyPersistentSettings(u32 mask) {
     g_configCheck = ConfigCheckState{};
     g_configCheck.mask = mask;
-    g_configCheck.rc = hocmonGetConfig(&g_configCheck.current);
-    g_configCheck.readOk = R_SUCCEEDED(g_configCheck.rc);
+    g_configCheck.readOk = readHocConfigIni(g_configCheck.current);
+    g_configCheck.rc = g_configCheck.readOk ? 0 : 0xF024;
     return g_configCheck.readOk && configMatchesCurrent(mask, g_configCheck.current);
 }
 
@@ -1083,7 +1137,7 @@ void renderConfigPrompt() {
     if (g.stage == Stage::Preparation)
         uiPrintf(4, "[33mY : RAW CONFIG DEBUG[0m");
     if (!g_configCheck.readOk) {
-        uiPrintf(5, "Could not read Horizon OC settings");
+        uiPrintf(5, "Could not read Horizon OC config.ini");
         uiPrintf(6, "Result : 0x%08X", g_configCheck.rc);
         uiPrintf(9, "A : Check again");
         uiPrintf(10, "B : Back");

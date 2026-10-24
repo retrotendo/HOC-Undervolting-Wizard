@@ -1,9 +1,9 @@
 /*
- * HOC Undervolting Wizard - Horizon OC monitor.
+ * HOC Undervolting Wizard - Horizon OC monitor/control.
  *
- * Uses the public Horizon-OC hoc:clk IPC service. The stable context fields are
- * used for clocks/voltages; current API-v2 context/config fields are used for
- * DRAM identification and read-only persistent-setting verification.
+ * Uses the public Horizon-OC hoc:clk IPC service. Persistent tuning settings
+ * are read-only here; only temporary CPU/GPU/RAM overrides are changed by the
+ * Wizard for controlled tests.
  *
  * SPDX-License-Identifier: GPL-2.0-only
  */
@@ -53,6 +53,10 @@ Result hocmonGetHardware(HocMonHardware* out);
 
 /* Read the persistent Horizon OC/KIP values used by the Battery Wizard. */
 Result hocmonGetConfig(HocMonConfig* out);
+
+/* Set Horizon OC temporary overrides. Pass 0 to remove an override. */
+Result hocmonSetOverride(int module, u32 hz); /* module: CPU=0, GPU=1, RAM=2 */
+Result hocmonSetOverrides(u32 cpuHz, u32 gpuHz, u32 ramHz);
 
 #ifdef __cplusplus
 }

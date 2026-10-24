@@ -194,6 +194,12 @@ Result g_rebootError = 0;
 Result g_hardwareReadRc = 0;
 HocMonHardware g_hardware{};
 
+bool g_vminScanScreen = false;
+bool g_vminScanSuccess = false;
+bool g_vminScanRestoreOk = true;
+Result g_vminScanErrorRc = 0;
+std::string g_vminScanErrorText;
+
 std::string formatVdd2(int uv) {
     const int whole = uv / 1000;
     const int rem = uv % 1000;
@@ -368,7 +374,7 @@ bool checkAllOverrides(Stage s) {
 // VMIN floor probing is measurement-only. Read several HOC context samples so a
 // stale single poll cannot decide the floor crossover. The median CPU rail
 // voltage from matching override samples is used.
-bool sampleVminVoltage(Stage s) {
+bool sampleVminVoltage(Stage s, int sweepIndex = -1, int sweepTotal = 0) {
     if (!checkAllOverrides(s)) return false;
 
     u32 samples[3] = {};
@@ -378,13 +384,16 @@ bool sampleVminVoltage(Stage s) {
     for (int i = 0; i < 3; ++i) {
         consoleClear();
         std::printf("\x1b[1;%dH\x1b[36mBattery Wizard\x1b[0m", UI_COL);
-        std::printf("\x1b[2;%dHStep : CPU Low VMIN - Voltage Scan", UI_COL);
+        std::printf("\x1b[2;%dHStep : CPU Low VMIN - AUTO SCAN", UI_COL);
         std::printf("\x1b[3;%dH----------------------------------------", UI_COL);
-        std::printf("\x1b[5;%dHReading CPU voltage...", UI_COL);
-        std::printf("\x1b[7;%dHCPU : %s", UI_COL, formatClock(g_overrideCheck.expected.cpuHz).c_str());
+        if (sweepIndex >= 0 && sweepTotal > 0)
+            std::printf("\x1b[5;%dHFrequency : %d / %d", UI_COL, sweepIndex + 1, sweepTotal);
+        std::printf("\x1b[7;%dHCPU       : %s", UI_COL, formatClock(g_overrideCheck.expected.cpuHz).c_str());
+        std::printf("\x1b[8;%dHGPU / RAM : 384 / 1331.2 MHz", UI_COL);
+        std::printf("\x1b[10;%dHReading CPU voltage...", UI_COL);
         char bar[13] = "............";
         for (int j = 0; j < i * 4; ++j) bar[j] = '#';
-        std::printf("\x1b[9;%dH[%s] %d/3", UI_COL, bar, i);
+        std::printf("\x1b[12;%dH[%s] %d/3", UI_COL, bar, i);
         consoleUpdate(nullptr);
         svcSleepThread(900'000'000);
 
@@ -402,13 +411,16 @@ bool sampleVminVoltage(Stage s) {
 
         consoleClear();
         std::printf("\x1b[1;%dH\x1b[36mBattery Wizard\x1b[0m", UI_COL);
-        std::printf("\x1b[2;%dHStep : CPU Low VMIN - Voltage Scan", UI_COL);
+        std::printf("\x1b[2;%dHStep : CPU Low VMIN - AUTO SCAN", UI_COL);
         std::printf("\x1b[3;%dH----------------------------------------", UI_COL);
-        std::printf("\x1b[5;%dHReading CPU voltage...", UI_COL);
-        std::printf("\x1b[7;%dHCPU : %s", UI_COL, formatClock(g_overrideCheck.expected.cpuHz).c_str());
+        if (sweepIndex >= 0 && sweepTotal > 0)
+            std::printf("\x1b[5;%dHFrequency : %d / %d", UI_COL, sweepIndex + 1, sweepTotal);
+        std::printf("\x1b[7;%dHCPU       : %s", UI_COL, formatClock(g_overrideCheck.expected.cpuHz).c_str());
+        std::printf("\x1b[8;%dHGPU / RAM : 384 / 1331.2 MHz", UI_COL);
+        std::printf("\x1b[10;%dHReading CPU voltage...", UI_COL);
         char done[13] = "............";
         for (int j = 0; j < (i + 1) * 4; ++j) done[j] = '#';
-        std::printf("\x1b[9;%dH[%s] %d/3", UI_COL, done, i + 1);
+        std::printf("\x1b[12;%dH[%s] %d/3", UI_COL, done, i + 1);
         consoleUpdate(nullptr);
     }
 
@@ -423,7 +435,6 @@ bool sampleVminVoltage(Stage s) {
         return false;
     }
 
-    // Median of exactly three samples without std::sort's large-range template path.
     if (samples[0] > samples[1]) std::swap(samples[0], samples[1]);
     if (samples[1] > samples[2]) std::swap(samples[1], samples[2]);
     if (samples[0] > samples[1]) std::swap(samples[0], samples[1]);
@@ -435,6 +446,7 @@ bool sampleVminVoltage(Stage s) {
     g_overrideCheck.voltageSamplesOk = true;
     return true;
 }
+
 
 
 void ensureDir() {
@@ -835,6 +847,52 @@ void footerTest(int row) {
 }
 
 
+
+bool restoreTemporaryOverrides(const HocMonClocks& before) {
+    bool ok = true;
+    // Restore GPU/RAM first, CPU last so a previous high CPU override is not
+    // reintroduced while the scan's RAM/GPU clocks are still active.
+    const u32 modules[3] = {HocMonModule_GPU, HocMonModule_MEM, HocMonModule_CPU};
+    for (u32 module : modules) {
+        Result rc = hocmonSetOverride(module, before.overrideHz[module]);
+        if (R_FAILED(rc)) ok = false;
+    }
+    svcSleepThread(300'000'000);
+    return ok;
+}
+
+void renderVminScanScreen() {
+    consoleClear();
+    uiPrintf(1, "\x1b[36mBattery Wizard - AUTO VMIN SCAN\x1b[0m");
+    uiPrintf(3, "----------------------------------------");
+
+    if (!g_vminScanSuccess) {
+        uiPrintf(5, "\x1b[31mAutomatic scan stopped\x1b[0m");
+        if (!g_vminScanErrorText.empty()) uiPrintf(7, "%s", g_vminScanErrorText.c_str());
+        if (g_vminScanErrorRc) uiPrintf(8, "Result : 0x%08X", g_vminScanErrorRc);
+        uiPrintf(10, "Previous overrides : %s", g_vminScanRestoreOk ? "\x1b[32mRESTORED\x1b[0m" : "\x1b[31mCHECK HOC\x1b[0m");
+        uiPrintf(13, "A : Retry full scan");
+        uiPrintf(14, "B : Back");
+        consoleUpdate(nullptr);
+        return;
+    }
+
+    uiPrintf(5, "\x1b[32mAutomatic scan complete\x1b[0m");
+    uiPrintf(7, "Low VMIN : %d mV", g.lowVminGood);
+    uiPrintf(8, "Regions  : %d", g.vminValidateCount);
+    int row = 10;
+    for (int i = 0; i < g.vminValidateCount && i < 6; ++i)
+        uiPrintf(row++, " %d. %s @ ~%d mV", i + 1, formatClock(g.vminValidateHz[i]).c_str(), g.vminValidateMv[i]);
+    row++;
+    if (g.vminFloorHz)
+        uiPrintf(row++, "VMIN floor ends at %s", formatClock(g.vminFloorHz).c_str());
+    uiPrintf(row++, "Previous overrides : %s", g_vminScanRestoreOk ? "\x1b[32mRESTORED\x1b[0m" : "\x1b[31mCHECK HOC\x1b[0m");
+    row += 2;
+    uiPrintf(row++, "A : Continue to validation");
+    uiPrintf(row++, "B : Exit");
+    consoleUpdate(nullptr);
+}
+
 void renderHardwareDetection() {
     title();
     if (g.ramDetected) {
@@ -1029,20 +1087,29 @@ void renderTestStage() {
         row++;
     }
 
+    if (isVminSweepStage(g.stage)) {
+        uiPrintf(row++, "Automatic CPU voltage scan");
+        row++;
+        uiPrintf(row++, "Low VMIN : %d mV", g.lowVminGood);
+        uiPrintf(row++, "CPU       : 510 -> 612 -> 714 ->");
+        uiPrintf(row++, "            816 -> 918 -> 1020 MHz");
+        uiPrintf(row++, "GPU       : 384 MHz (automatic)");
+        uiPrintf(row++, "RAM       : 1331.2 MHz (automatic)");
+        row++;
+        uiPrintf(row++, "The Wizard will set Temporary Overrides,");
+        uiPrintf(row++, "measure 3 samples at every CPU clock,");
+        uiPrintf(row++, "then restore your previous Overrides.");
+        row += 2;
+        uiPrintf(row++, "A : START SCAN");
+        uiPrintf(row++, "B : Exit");
+        return;
+    }
+
     if (hasOverrides) {
         uiPrintf(row++, "@ Horizon OC");
         row++;
         printOverrides(row, expected);
         row += 5;
-    }
-
-    if (isVminSweepStage(g.stage)) {
-        uiPrintf(row++, "Voltage scan:");
-        uiPrintf(row++, "A : Read voltage");
-        uiPrintf(row++, "    (3 samples / progress shown)");
-        if (g.lastProbeHz) uiPrintf(row++, "Last: %s @ ~%d mV", formatClock(g.lastProbeHz).c_str(), g.lastProbeMv);
-        uiPrintf(row++, "B : Exit");
-        return;
     }
 
     if (hasTest) {
@@ -1173,6 +1240,7 @@ void renderResultScreen() {
 void render() {
     consoleClear();
     if (g_bootPrompt) { renderBootPrompt(); return; }
+    if (g_vminScanScreen) { renderVminScanScreen(); return; }
     if (g_interruptedPrompt) { renderInterruptedPrompt(); return; }
     if (g_configPrompt) { renderConfigPrompt(); return; }
     if (g_rebootConfirm) { renderRebootConfirm(); return; }
@@ -1494,28 +1562,130 @@ void handleFail(bool didNotBoot) {
 }
 
 
-void runVminProbe() {
-    if (!isVminSweepStage(g.stage)) return;
+void runAutomaticVminScan() {
+    static const Stage stages[6] = {
+        Stage::LowVminLong,
+        Stage::LowVminSweep612,
+        Stage::LowVminSweep714,
+        Stage::LowVminValidate816,
+        Stage::LowVminSweep918,
+        Stage::LowVminValidate1020,
+    };
+    static const u32 cpuHz[6] = {
+        CLOCK_CPU_VMIN_510_HZ,
+        CLOCK_CPU_LOW_HZ,
+        CLOCK_CPU_VMIN_714_HZ,
+        CLOCK_CPU_VMIN_MID_HZ,
+        CLOCK_CPU_VMIN_918_HZ,
+        CLOCK_CPU_NORMAL_HZ,
+    };
 
-    g_overrideAction = PendingOverrideAction::VminProbe;
-    if (!sampleVminVoltage(g.stage)) {
-        g_overridePrompt = true;
+    g_vminScanScreen = false;
+    g_vminScanSuccess = false;
+    g_vminScanRestoreOk = true;
+    g_vminScanErrorRc = 0;
+    g_vminScanErrorText.clear();
+
+    HocMonClocks before{};
+    Result rc = hocmonGetClocks(&before);
+    if (R_FAILED(rc)) {
+        g_vminScanErrorRc = rc;
+        g_vminScanErrorText = "Could not read current HOC overrides.";
+        g_vminScanScreen = true;
         return;
     }
-    g_overridePrompt = false;
 
-    const Stage probedStage = g.stage;
-    recordVminObservation(probedStage);
+    clearVminSweepData();
+    g.stage = Stage::LowVminLong;
+    saveState();
 
-    consoleClear();
-    uiPrintf(5, "\x1b[32mVoltage read complete\x1b[0m");
-    uiPrintf(7, "%s", formatClock(g.lastProbeHz).c_str());
-    uiPrintf(8, "~%d mV", g.lastProbeMv);
-    consoleUpdate(nullptr);
-    svcSleepThread(600'000'000);
+    // Move CPU to the safe low scan clock before changing the other modules.
+    rc = hocmonSetOverride(HocMonModule_CPU, cpuHz[0]);
+    if (R_SUCCEEDED(rc)) rc = hocmonSetOverride(HocMonModule_GPU, CLOCK_GPU_NORMAL_HZ);
+    if (R_SUCCEEDED(rc)) rc = hocmonSetOverride(HocMonModule_MEM, CLOCK_RAM_NORMAL_HZ);
+    if (R_FAILED(rc)) {
+        g_vminScanErrorRc = rc;
+        g_vminScanErrorText = "HOC refused an automatic Temporary Override.";
+        g_vminScanRestoreOk = restoreTemporaryOverrides(before);
+        g_vminScanScreen = true;
+        return;
+    }
 
-    handlePass();
+    for (int i = 0; i < 6; ++i) {
+        consoleClear();
+        uiPrintf(1, "\x1b[36mBattery Wizard - AUTO VMIN SCAN\x1b[0m");
+        uiPrintf(3, "----------------------------------------");
+        uiPrintf(5, "Frequency : %d / 6", i + 1);
+        uiPrintf(7, "Setting CPU override : %s", formatClock(cpuHz[i]).c_str());
+        uiPrintf(8, "GPU / RAM            : 384 / 1331.2 MHz");
+        uiPrintf(10, "Please do not open Horizon OC during scan.");
+        consoleUpdate(nullptr);
+
+        if (i > 0) {
+            rc = hocmonSetOverride(HocMonModule_CPU, cpuHz[i]);
+            if (R_FAILED(rc)) {
+                g_vminScanErrorRc = rc;
+                g_vminScanErrorText = "Could not switch the CPU Temporary Override.";
+                break;
+            }
+        }
+
+        // Let HOC/governor settle before taking the first context sample.
+        svcSleepThread(700'000'000);
+
+        bool measured = sampleVminVoltage(stages[i], i, 6);
+        if (!measured) {
+            // One automatic retry covers a late governor/context update.
+            svcSleepThread(500'000'000);
+            measured = sampleVminVoltage(stages[i], i, 6);
+        }
+        if (!measured) {
+            g_vminScanErrorRc = g_overrideCheck.readOk ? 0 : g_overrideCheck.rc;
+            if (!g_overrideCheck.cpuOk || !g_overrideCheck.gpuOk || !g_overrideCheck.ramOk)
+                g_vminScanErrorText = "Requested Temporary Override was not applied.";
+            else if (!g_overrideCheck.cpuAppliedOk)
+                g_vminScanErrorText = "CPU clock did not settle on the requested value.";
+            else
+                g_vminScanErrorText = "Could not obtain 3 valid CPU-voltage samples.";
+            break;
+        }
+
+        recordVminObservation(stages[i]);
+
+        consoleClear();
+        uiPrintf(1, "\x1b[36mBattery Wizard - AUTO VMIN SCAN\x1b[0m");
+        uiPrintf(3, "----------------------------------------");
+        uiPrintf(5, "Frequency : %d / 6", i + 1);
+        uiPrintf(7, "\x1b[32mMeasured\x1b[0m : %s @ ~%d mV", formatClock(cpuHz[i]).c_str(), g.lastProbeMv);
+        consoleUpdate(nullptr);
+        svcSleepThread(350'000'000);
+    }
+
+    g_vminScanRestoreOk = restoreTemporaryOverrides(before);
+
+    if (!g_vminScanErrorText.empty() || g_vminScanErrorRc) {
+        g.stage = Stage::LowVminLong;
+        saveState();
+        g_vminScanScreen = true;
+        return;
+    }
+
+    buildVminPlateaus();
+    if (g.vminValidateCount <= 0) {
+        g_vminScanErrorText = "No valid CPU voltage regions were detected.";
+        g.stage = Stage::LowVminLong;
+        saveState();
+        g_vminScanScreen = true;
+        return;
+    }
+
+    g.stage = Stage::LowVminPlateauValidate;
+    g.stageReadyAfterBoot = true;
+    saveState();
+    g_vminScanSuccess = true;
+    g_vminScanScreen = true;
 }
+
 
 
 void runCurrentTest() {
@@ -1659,6 +1829,28 @@ int main(int argc, char** argv) {
             continue;
         }
 
+        if (g_vminScanScreen) {
+            if (k & HidNpadButton_A) {
+                if (g_vminScanSuccess) {
+                    g_vminScanScreen = false;
+                    redraw = true;
+                } else {
+                    g_vminScanScreen = false;
+                    runAutomaticVminScan();
+                    redraw = true;
+                }
+            } else if (k & HidNpadButton_B) {
+                if (g_vminScanSuccess) {
+                    saveState();
+                    break;
+                }
+                g_vminScanScreen = false;
+                redraw = true;
+            }
+            svcSleepThread(20'000'000);
+            continue;
+        }
+
         if (g_interruptedPrompt) {
             if (k & HidNpadButton_A) {
                 g.testRunning = false;
@@ -1741,7 +1933,7 @@ int main(int argc, char** argv) {
         if (g_overridePrompt) {
             if (k & HidNpadButton_A) {
                 g_overridePrompt = false;
-                if (g_overrideAction == PendingOverrideAction::VminProbe) runVminProbe();
+                if (g_overrideAction == PendingOverrideAction::VminProbe) runAutomaticVminScan();
                 else runCurrentTest();
                 redraw = true;
             } else if (k & HidNpadButton_B) {
@@ -1789,7 +1981,7 @@ int main(int argc, char** argv) {
             }
         } else if (k & HidNpadButton_Plus) {
             if (isVminSweepStage(g.stage)) {
-                runVminProbe();
+                runAutomaticVminScan();
             } else {
                 stress::Kind skipKind;
                 int skipSeconds = 0;
@@ -1811,7 +2003,7 @@ int main(int argc, char** argv) {
                 if (verifyPersistentSettings(cfgMask)) g_rebootConfirm = true;
                 else g_configPrompt = true;
             } else if (isVminSweepStage(g.stage)) {
-                runVminProbe();
+                runAutomaticVminScan();
             } else {
                 stress::Kind kind;
                 int seconds = 0;

@@ -33,3 +33,5 @@ jobs:
           git -C "$GITHUB_WORKSPACE" add source/main.cpp Makefile UPDATE.txt
           git -C "$GITHUB_WORKSPACE" commit -m "Show Horizon OC RAM guide ranges in beta22"
           git -C "$GITHUB_WORKSPACE" push origin HEAD:beta22-hardware-oc-range
+
+# retry after patch-anchor fix

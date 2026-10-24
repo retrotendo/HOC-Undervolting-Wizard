@@ -1,0 +1,34 @@
+name: Apply beta16 guided flow
+
+on:
+  push:
+    branches:
+      - beta15-guided-reboot-vmin-plateaus
+    paths:
+      - 'tools/apply_beta16_flow.py'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch-build-commit:
+    runs-on: ubuntu-latest
+    container: devkitpro/devkita64:latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply beta16 flow
+        run: python3 tools/apply_beta16_flow.py
+      - name: Build patched source
+        run: make -j2
+      - name: Commit patched source
+        run: |
+          git config user.name "retrotendo"
+          git config user.email "info@retrotendo.de"
+          git add source/main.cpp Makefile UPDATE.txt RELEASE_NOTES_v0.4.0-beta.16.md README.md
+          git diff --cached --quiet && exit 0
+          git commit -m "beta16: guided reboot and automatic VMIN plateau flow"
+          git push origin HEAD:beta15-guided-reboot-vmin-plateaus

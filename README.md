@@ -80,18 +80,22 @@ Persistent HOC changes now use a dedicated handoff instead of mixing setting ins
 
 Values that were already confirmed are no longer repeated as set points on later pages. Temporary Overrides are still shown whenever they must be changed for a test.
 
-## CPU voltage-region validation
+## Automatic CPU Low VMIN voltage scan
 
-The Low VMIN scan still measures **510 -> 612 -> 714 -> 816 -> 918 -> 1020 MHz**, but beta.16 no longer stops after finding the VMIN crossover.
+After the Low VMIN candidate has booted successfully, the Wizard offers one **A = START SCAN** action. From that point the voltage scan runs without further user input.
 
-- Pressing A for a scan point shows a short **3-sample progress bar** while HOC voltage is read.
-- All six points are measured.
+- The currently active CPU/GPU/RAM Temporary Overrides are saved first.
+- GPU is set automatically to **384 MHz** and RAM to **1331.2 MHz**.
+- CPU is switched automatically through **510 -> 612 -> 714 -> 816 -> 918 -> 1020 MHz**.
+- HOC is given time to settle after every frequency change.
+- At every CPU point the Wizard takes **3 valid CPU-rail samples** and uses the median.
 - Readings are grouped into distinct 5 mV CPU-voltage regions.
-- For each region, only the **highest frequency in that region** gets the 1-hour CPU stability test.
+- The Temporary Overrides that were active before the scan are restored afterward.
+- For each detected voltage region, only the **highest frequency in that region** gets the later 1-hour CPU stability test.
 
 Example: if 510-816 MHz measure ~570 mV, 918 MHz measures ~585 mV and 1020 MHz measures ~600 mV, the Wizard validates **816 @ 570**, **918 @ 585** and **1020 @ 600**.
 
-The detected voltage regions are also written to `results.txt`.
+The detected voltage regions are also written to `results.txt`. The Wizard still does not change persistent Low VMIN/UV/RAM voltage settings automatically; this scan writes only Temporary Overrides.
 
 ---
 
@@ -233,7 +237,7 @@ After the Wizard finds a Low VMIN candidate it performs a short ascending sweep:
 
 GPU remains **384 MHz** and RAM remains **1331.2 MHz**.
 
-At each step the Wizard verifies CPU/GPU/RAM overrides and reads the **live CPU rail voltage reported by Horizon OC**. The probe takes **3 context samples** and uses the **median of valid readings** and only accepts samples while HOC reports the requested CPU clock as actually applied so a single stale HOC poll does not decide the crossover. It remembers the highest CPU frequency still operating at the configured VMIN floor (within one 5 mV PMIC step).
+Starting with beta.16, the Wizard sets these Temporary Overrides itself for this scan. It saves the previous CPU/GPU/RAM overrides, applies the scan clocks, waits for HOC/governor to settle, then reads the **live CPU rail voltage reported by Horizon OC**. Every point uses **3 valid context samples** and the median; samples are accepted only while HOC reports the requested CPU clock as actually applied. After the full scan, the previous Temporary Overrides are restored.
 
 These sweep points are **measurement-only**. They do not each run another 1-minute stress test. Starting with beta.16, all six points are measured so the Wizard can identify every distinct CPU-voltage region, not only the VMIN floor.
 
@@ -258,11 +262,11 @@ Cancelling a running test with **B** does not count as FAIL.
 
 ---
 
-# The Wizard does not write Horizon OC tuning values
+# Persistent tuning values remain manual
 
-The Wizard reads Horizon OC context data for clocks, overrides and the current CPU rail voltage, but it does **not** write UV/voltage settings and does **not** edit `hoc.kip`.
+The Wizard does **not** write persistent CPU UV, Low/High VMIN, VDDQ or VDD2 tuning values and does **not** edit `hoc.kip`. Horizon OC remains the place where those tuning values are changed.
 
-Horizon OC remains the place where tuning values are changed.
+The beta.16 automatic Low VMIN scan is the first exception for **Temporary Overrides only**: the Wizard can set CPU/GPU/RAM Temporary Overrides through HOC's public `hoc:clk` IPC, perform the scan, and restore the previous overrides afterward.
 
 Progress is stored at:
 
@@ -451,6 +455,12 @@ When a persistent Horizon OC value must change:
 - if correct, a green confirmation screen appears
 - **A** again — request console restart
 - after reopening: **A = booted normally**, **X = did not boot**, **B = decide later**
+
+Automatic Low VMIN voltage scan:
+
+- **A** — start the complete automatic 510 -> 1020 MHz scan
+- no manual Temporary Override changes are required during the scan
+- after completion, **A** continues to voltage-region validation
 
 During a running stress test:
 

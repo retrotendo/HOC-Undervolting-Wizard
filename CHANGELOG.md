@@ -5,8 +5,10 @@
 - Show a green confirmation when the requested value is detected, then reboot only after a second A-button confirmation.
 - Persist the reboot handoff and ask whether CFW booted normally when the Wizard is reopened.
 - Separate setting pages from test pages so already-confirmed UV/voltage values are not repeatedly shown.
-- Add a visible 3-sample progress bar to CPU voltage scans.
-- Scan all 510/612/714/816/918/1020 MHz points and group the observed CPU voltages into 5 mV regions.
+- Add a fully automatic Low VMIN voltage scan using Horizon OC's public Temporary Override IPC.
+- Save the previous CPU/GPU/RAM overrides, automatically apply GPU 384 / RAM 1331.2 and CPU 510/612/714/816/918/1020, then restore the previous overrides after the scan.
+- Add a visible 3-sample progress bar to CPU voltage scans and automatically retry once if HOC/context settling is late.
+- Group the observed CPU voltages into 5 mV regions.
 - Run the 1-hour CPU validation at the highest frequency of **each** detected voltage region instead of only the Low VMIN floor region.
 - Record detected RAM and CPU voltage regions in `results.txt`.
 - Keep beta.15's vertical Required / Current / OK-WRONG Temporary Override blocker.

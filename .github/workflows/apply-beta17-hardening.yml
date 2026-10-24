@@ -1,0 +1,35 @@
+name: Apply beta17 hardening
+
+on:
+  push:
+    branches:
+      - beta17-main-hardening
+    paths:
+      - 'tools/apply_beta17_hardening.py'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch-build-commit:
+    runs-on: ubuntu-latest
+    container: devkitpro/devkita64:latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply beta17 patch
+        run: python3 tools/apply_beta17_hardening.py
+      - name: Build patched source
+        run: make -j2
+      - name: Commit patched source
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git -C "$GITHUB_WORKSPACE" config user.name "retrotendo"
+          git -C "$GITHUB_WORKSPACE" config user.email "info@retrotendo.de"
+          git -C "$GITHUB_WORKSPACE" add source/main.cpp Makefile UPDATE.txt RELEASE_NOTES_v0.4.0-beta.17.md
+          if git -C "$GITHUB_WORKSPACE" diff --cached --quiet; then exit 0; fi
+          git -C "$GITHUB_WORKSPACE" commit -m "beta17: harden guided scan and migration flow"
+          git -C "$GITHUB_WORKSPACE" push origin HEAD:beta17-main-hardening

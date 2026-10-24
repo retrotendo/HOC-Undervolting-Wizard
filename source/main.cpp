@@ -187,6 +187,10 @@ struct ConfigCheckState {
 };
 
 bool g_configPrompt = false;
+bool g_configDebugScreen = false;
+int g_configDebugPage = 0;
+HocMonConfigDebug g_configDebug{};
+Result g_configDebugRc = 0;
 bool g_rebootConfirm = false;
 bool g_bootPrompt = false;
 ConfigCheckState g_configCheck;
@@ -1031,11 +1035,53 @@ void printCompactWrong(int& row, const char* label, const std::string& required,
     uiPrintf(row++, " Req:%s  Cur:%s  \x1b[31mWRONG\x1b[0m", required.c_str(), current.c_str());
 }
 
+void openConfigDebug() {
+    g_configDebug = HocMonConfigDebug{};
+    g_configDebugRc = hocmonGetConfigDebug(&g_configDebug);
+    g_configDebugPage = 0;
+    g_configDebugScreen = true;
+}
+
+void renderConfigDebug() {
+    consoleClear();
+    uiPrintf(1, "\x1b[36mBattery Wizard - CONFIG DEBUG\x1b[0m");
+    uiPrintf(2, "HOC : %s", g_configDebug.version[0] ? g_configDebug.version : "<unknown>");
+    uiPrintf(3, "API : %u", g_configDebug.apiVersion);
+    uiPrintf(4, "----------------------------------------");
+
+    if (R_FAILED(g_configDebugRc)) {
+        uiPrintf(7, "\x1b[31mRaw config read failed\x1b[0m");
+        uiPrintf(8, "Result : 0x%08X", g_configDebugRc);
+        uiPrintf(11, "B : Back");
+        consoleUpdate(nullptr);
+        return;
+    }
+
+    constexpr int perPage = 24;
+    constexpr int rows = 12;
+    constexpr int pages = 4; // indexes 0..95 cover every Battery Wizard field
+    const int base = g_configDebugPage * perPage;
+    uiPrintf(5, "Raw GetConfigValues  Page %d / %d", g_configDebugPage + 1, pages);
+    uiPrintf(6, " index:value               index:value");
+    for (int r = 0; r < rows; ++r) {
+        const int a = base + r;
+        const int b = base + rows + r;
+        uiPrintf(7 + r, " %3d:%-12llu       %3d:%llu",
+                 a, (unsigned long long)g_configDebug.values[a],
+                 b, (unsigned long long)g_configDebug.values[b]);
+    }
+    uiPrintf(21, "A : Next page    X : Previous page");
+    uiPrintf(22, "B : Back to Preparation check");
+    consoleUpdate(nullptr);
+}
+
 void renderConfigPrompt() {
     consoleClear();
     uiPrintf(1, "\x1b[31mBattery Wizard - SETTING NOT READY\x1b[0m");
     uiPrintf(2, "Step : %s", compactStepName(g.stage));
     uiPrintf(3, "----------------------------------------");
+    if (g.stage == Stage::Preparation)
+        uiPrintf(4, "[33mY : RAW CONFIG DEBUG[0m");
     if (!g_configCheck.readOk) {
         uiPrintf(5, "Could not read Horizon OC settings");
         uiPrintf(6, "Result : 0x%08X", g_configCheck.rc);
@@ -1354,6 +1400,7 @@ void render() {
     if (g_bootPrompt) { renderBootPrompt(); return; }
     if (g_vminScanScreen) { renderVminScanScreen(); return; }
     if (g_interruptedPrompt) { renderInterruptedPrompt(); return; }
+    if (g_configDebugScreen) { renderConfigDebug(); return; }
     if (g_configPrompt) { renderConfigPrompt(); return; }
     if (g_rebootConfirm) { renderRebootConfirm(); return; }
     if (g_overridePrompt) { renderOverridePrompt(); return; }
@@ -1990,8 +2037,26 @@ int main(int argc, char** argv) {
             continue;
         }
 
-        if (g_configPrompt) {
+        if (g_configDebugScreen) {
             if (k & HidNpadButton_A) {
+                g_configDebugPage = (g_configDebugPage + 1) % 4;
+                redraw = true;
+            } else if (k & HidNpadButton_X) {
+                g_configDebugPage = (g_configDebugPage + 3) % 4;
+                redraw = true;
+            } else if (k & HidNpadButton_B) {
+                g_configDebugScreen = false;
+                redraw = true;
+            }
+            svcSleepThread(20'000'000);
+            continue;
+        }
+
+        if (g_configPrompt) {
+            if ((k & HidNpadButton_Y) && g.stage == Stage::Preparation) {
+                openConfigDebug();
+                redraw = true;
+            } else if (k & HidNpadButton_A) {
                 const u32 mask = activeConfigMask();
                 if (verifyPersistentSettings(mask)) {
                     g_configPrompt = false;

@@ -24,6 +24,7 @@
 
 #define HOCCLK_IPC_SERVICE_NAME "hoc:clk"
 #define HOCCLK_IPC_CMD_GET_API_VERSION 0
+#define HOCCLK_IPC_CMD_GET_VERSION_STRING 1
 #define HOCCLK_IPC_CMD_GET_CURRENT_CONTEXT 2
 #define HOCCLK_IPC_CMD_SET_OVERRIDE 8
 #define HOCCLK_IPC_CMD_GET_CONFIG_VALUES 9
@@ -340,3 +341,34 @@ Result hocmonGetConfig(HocMonConfig* out)
     out->cpuBoostKHz = (u32)cfg.values[CFG_CPU_BOOST_KHZ];
     return 0;
 }
+
+Result hocmonGetConfigDebug(HocMonConfigDebug* out)
+{
+    if (!out)
+        return 1;
+    memset(out, 0, sizeof(*out));
+
+    Service srv = {0};
+    u32 api = 0;
+    Result rc = hocmonOpen(&srv, &api);
+    if (R_FAILED(rc))
+        return rc;
+
+    out->apiVersion = api;
+    rc = serviceDispatch(&srv, HOCCLK_IPC_CMD_GET_VERSION_STRING,
+        .buffer_attrs = { SfBufferAttr_HipcAutoSelect | SfBufferAttr_Out },
+        .buffers = {{ out->version, sizeof(out->version) }},
+    );
+    if (R_FAILED(rc)) {
+        memset(out->version, 0, sizeof(out->version));
+        strncpy(out->version, "<version read failed>", sizeof(out->version) - 1);
+    }
+
+    rc = serviceDispatch(&srv, HOCCLK_IPC_CMD_GET_CONFIG_VALUES,
+        .buffer_attrs = { SfBufferAttr_HipcAutoSelect | SfBufferAttr_Out },
+        .buffers = {{ out->values, sizeof(out->values) }},
+    );
+    serviceClose(&srv);
+    return rc;
+}
+

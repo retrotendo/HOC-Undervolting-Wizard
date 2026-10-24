@@ -240,12 +240,6 @@ const char* stageName(Stage s) {
     return "Unknown";
 }
 
-bool isQuickStage(Stage s) {
-    return s == Stage::LowUvQuick || s == Stage::LowVminQuick ||
-           s == Stage::VddqQuick || s == Stage::Vdd2Quick ||
-           s == Stage::HighUvQuick;
-}
-
 bool testPlan(Stage s, stress::Kind& kind, int& seconds) {
     switch (s) {
         case Stage::LowUvQuick:
@@ -429,8 +423,11 @@ bool sampleVminVoltage(Stage s) {
         return false;
     }
 
-    std::sort(samples, samples + count);
-    latest.cpuVoltageUv = samples[count / 2];
+    // Median of exactly three samples without std::sort's large-range template path.
+    if (samples[0] > samples[1]) std::swap(samples[0], samples[1]);
+    if (samples[1] > samples[2]) std::swap(samples[1], samples[2]);
+    if (samples[0] > samples[1]) std::swap(samples[0], samples[1]);
+    latest.cpuVoltageUv = samples[1];
     g_overrideCheck.current = latest;
     g_overrideCheck.readOk = true;
     g_overrideCheck.cpuOk = g_overrideCheck.gpuOk = g_overrideCheck.ramOk = true;
@@ -810,17 +807,6 @@ void title() {
     uiPrintf(1, "\x1b[36mBattery Wizard\x1b[0m");
     uiPrintf(2, "Step : %s", compactStepName(g.stage));
     uiPrintf(3, "----------------------------------------");
-}
-
-void printSafeRecovery(const char* menu, const std::string& restoreText) {
-    uiPrintf(5, "@ Horizon OC");
-    uiPrintf(7, "\x1b[33mPrevious setting did not boot\x1b[0m");
-    uiPrintf(9, "Recovery:");
-    uiPrintf(10, " - Boot Hekate without hoc.kip");
-    uiPrintf(11, " - Open Horizon OC");
-    uiPrintf(12, "%s:", menu);
-    uiPrintf(13, " - Restore : %s", restoreText.c_str());
-    uiPrintf(14, " - Reboot CFW");
 }
 
 const char* compactTestName(stress::Kind kind) {
@@ -1258,12 +1244,6 @@ void restartVminSweep(bool recovery) {
     saveState();
 }
 
-
-void enterLowUvLong(bool recovery) { g.stage = Stage::LowUvLong; g.recoveryNeeded = recovery; saveState(); }
-void enterLowVminLong(bool recovery) { restartVminSweep(recovery); }
-void enterVddqLong(bool recovery) { g.stage = Stage::VddqLong; g.recoveryNeeded = recovery; saveState(); }
-void enterVdd2Long(bool recovery) { g.stage = Stage::Vdd2Long; g.recoveryNeeded = recovery; saveState(); }
-void enterHighUvLong(bool recovery) { g.stage = Stage::HighUvLong; g.recoveryNeeded = recovery; saveState(); }
 
 void handlePass() {
     switch (g.stage) {

@@ -265,48 +265,38 @@ Result hocmonGetHardware(HocMonHardware* out)
     if (R_FAILED(rc))
         return rc;
 
-    /*
-     * HOC 2.6.0 and current HOC use the same 0x500 context size but differ by
-     * one byte before maxDisplayFreq/dramID:
-     *
-     *   current main : [402]=maxDisplayFreq [403]=dramID [404]=isDram8GB
-     *   HOC 2.6.0   : [402]=isUsingRetroSuper [403]=maxDisplayFreq
-     *                  [404]=dramID [405]=isDram8GB
-     *
-     * consoleType remains 32-bit aligned at byte 408 in both layouts. Do not
-     * guess from maxDisplayFreq; validate both layouts against HOC's known
-     * Mariko DRAM IDs and the adjacent boolean instead.
-     */
     const u8* bytes = (const u8*)&raw;
-    /* consoleType is not ABI-stable across HOC 2.6.x context layouts.
-     * It is not needed to choose the RAM/VDDQ baseline, so do not reject an
-     * otherwise unambiguous DRAM identification because of this field. */
-    s32 consoleType = -1;
-    memcpy(&consoleType, bytes + 408, sizeof(consoleType));
 
-    const u8 currentId = bytes[403];
-    const u8 currentIs8GB = bytes[404];
-    const bool currentValid =
-        hocmonIsKnownMarikoDramId(currentId) && currentIs8GB <= 1;
+    /* Horizon OC 2.6.0: dramID@400, isDram8GB@401, consoleType@404. */
+    s32 console260 = -1;
+    memcpy(&console260, bytes + 404, sizeof(console260));
+    const u8 id260 = bytes[400];
+    const u8 is8_260 = bytes[401];
+    const bool valid260 =
+        hocmonIsKnownMarikoDramId(id260) && is8_260 <= 1 &&
+        console260 >= 0 && console260 <= 3;
 
-    const u8 hoc260Id = bytes[404];
-    const u8 hoc260Is8GB = bytes[405];
-    const bool hoc260Valid =
-        hocmonIsKnownMarikoDramId(hoc260Id) && hoc260Is8GB <= 1;
+    /* Current HOC main: dramID@403, isDram8GB@404, consoleType@408. */
+    s32 consoleCurrent = -1;
+    memcpy(&consoleCurrent, bytes + 408, sizeof(consoleCurrent));
+    const u8 idCurrent = bytes[403];
+    const u8 is8_current = bytes[404];
+    const bool validCurrent =
+        hocmonIsKnownMarikoDramId(idCurrent) && is8_current <= 1 &&
+        consoleCurrent >= 0 && consoleCurrent <= 3;
 
-    /* Exactly one known layout must validate. Ambiguous/unknown future layouts
-       deliberately fail instead of selecting a RAM family by accident. */
-    if (currentValid == hoc260Valid)
+    if (valid260 == validCurrent)
         return 3;
 
-    if (currentValid) {
-        out->dramId = currentId;
-        out->isDram8GB = currentIs8GB != 0;
+    if (valid260) {
+        out->dramId = id260;
+        out->isDram8GB = is8_260 != 0;
+        out->consoleType = (u32)console260;
     } else {
-        out->dramId = hoc260Id;
-        out->isDram8GB = hoc260Is8GB != 0;
+        out->dramId = idCurrent;
+        out->isDram8GB = is8_current != 0;
+        out->consoleType = (u32)consoleCurrent;
     }
-    out->consoleType = (u32)consoleType;
     return 0;
 }
 

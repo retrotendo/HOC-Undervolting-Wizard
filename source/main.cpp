@@ -566,6 +566,30 @@ bool loadState() {
     if (g.lowVminGood < LOW_VMIN_MIN_MV) g.lowVminGood = LOW_VMIN_MIN_MV;
     if (g.lowVminTest < LOW_VMIN_MIN_MV) g.lowVminTest = LOW_VMIN_MIN_MV;
     if (!g.ramDetected && g.stage == Stage::Preparation) g.stage = Stage::HardwareDetection;
+
+    // States written by beta.15 used a manual 510->1020 MHz sweep. If an old
+    // state is resumed in the middle/end of that flow, restart at beta.16+'s
+    // automatic scan instead of entering plateau validation with empty data.
+    const bool legacyVminState =
+        g.stage == Stage::LowVminSweep612 || g.stage == Stage::LowVminSweep714 ||
+        g.stage == Stage::LowVminValidate816 || g.stage == Stage::LowVminSweep918 ||
+        g.stage == Stage::LowVminValidate1020 ||
+        (g.stage == Stage::LowVminFinalLong && g.vminValidateCount == 0);
+    if (legacyVminState) {
+        g.stage = Stage::LowVminLong;
+        g.stageReadyAfterBoot = true;
+        g.pendingConfigMask = Config_None;
+        g.vminObsMask = 0;
+        g.vminValidateCount = 0;
+        g.vminValidateIndex = 0;
+        g.lastProbeHz = 0;
+        g.lastProbeMv = 0;
+        for (int i = 0; i < 6; ++i) {
+            g.vminObsMv[i] = 0;
+            g.vminValidateHz[i] = 0;
+            g.vminValidateMv[i] = 0;
+        }
+    }
     return true;
 }
 
@@ -598,6 +622,31 @@ RamProfile ramProfileForId(int id) {
     }
 }
 
+bool ramTuningAlreadyStarted(Stage st) {
+    switch (st) {
+        case Stage::VddqQuick:
+        case Stage::VddqLong:
+        case Stage::Vdd2Quick:
+        case Stage::Vdd2Long:
+        case Stage::RamBoostValidate:
+        case Stage::Ram1331Validate:
+        case Stage::HighUvQuick:
+        case Stage::HighUvLong:
+        case Stage::BoostCpuRamValidate:
+        case Stage::NormalMatrixValidate:
+        case Stage::NormalMemValidate:
+        case Stage::NormalGpuValidate:
+        case Stage::BoostMatrixValidate:
+        case Stage::BoostMemValidate:
+        case Stage::BoostCpuMemValidate:
+        case Stage::RealWorldValidate:
+        case Stage::Complete:
+            return true;
+        default:
+            return false;
+    }
+}
+
 bool detectRamHardware() {
     g_hardware = HocMonHardware{};
     g_hardwareReadRc = hocmonGetHardware(&g_hardware);
@@ -605,12 +654,15 @@ bool detectRamHardware() {
     const RamProfile p = ramProfileForId(g_hardware.dramId);
     // Icosa = Erista/V1, outside this Mariko Battery guide.
     if (!p.known || g_hardware.consoleType == 0) return false;
+    const bool keepExistingRamTune = ramTuningAlreadyStarted(g.stage);
     g.dramId = g_hardware.dramId;
     g.consoleType = (int)g_hardware.consoleType;
     g.vddqStartMv = p.vddqStartMv;
     g.ramDetected = true;
-    g.vddqGood = g.vddqStartMv;
-    g.vddqTest = g.vddqStartMv - VDDQ_STEP_MV;
+    if (!keepExistingRamTune) {
+        g.vddqGood = g.vddqStartMv;
+        g.vddqTest = g.vddqStartMv - VDDQ_STEP_MV;
+    }
     saveState();
     return true;
 }
@@ -936,6 +988,21 @@ void printSingleConfigCheck(int row, const char* label, const std::string& requi
 
 std::string formatMv(int mv) { return std::to_string(mv) + " mV"; }
 
+const char* cpuTableLabel(int table) {
+    switch (table) {
+        case 1: return "Default";
+        case 2: return "1581 Tbreak";
+        case 3: return "1683 Tbreak";
+        case 4: return "Extreme UV";
+        default: return "Unknown";
+    }
+}
+
+void printCompactWrong(int& row, const char* label, const std::string& required, const std::string& current) {
+    uiPrintf(row++, "%s", label);
+    uiPrintf(row++, " Req:%s  Cur:%s  \x1b[31mWRONG\x1b[0m", required.c_str(), current.c_str());
+}
+
 void renderConfigPrompt() {
     consoleClear();
     uiPrintf(1, "\x1b[31mBattery Wizard - SETTING NOT READY\x1b[0m");
@@ -953,15 +1020,32 @@ void renderConfigPrompt() {
     const u32 m = g_configCheck.mask;
     int row = 5;
     if (m & Config_Prepare) {
-        uiPrintf(row++, "Preparation contains one or more WRONG values.");
+        uiPrintf(row++, "Fix these Preparation values:");
         row++;
-        if (g_configCheck.current.vddqUv != (u32)g.vddqStartMv * 1000U)
-            printSingleConfigCheck(row, "VDDQ", formatMv(g.vddqStartMv), formatMv((int)(g_configCheck.current.vddqUv / 1000U)), false), row += 5;
+        if (g_configCheck.current.uncappedClocks)
+            printCompactWrong(row, "General - Uncapped Clocks", "OFF", "ON");
+        if (g_configCheck.current.hpMode)
+            printCompactWrong(row, "RAM - HP Mode", "OFF", "ON");
+        if (g_configCheck.current.ramMaxKHz != 1600000U)
+            printCompactWrong(row, "RAM - Max", "1600MHz", std::to_string(g_configCheck.current.ramMaxKHz / 1000U) + "MHz");
         if (g_configCheck.current.vdd2Uv != (u32)STOCK_VDD2_UV)
-            printSingleConfigCheck(row, "VDD2", formatVdd2(STOCK_VDD2_UV), formatVdd2((int)g_configCheck.current.vdd2Uv), false), row += 5;
+            printCompactWrong(row, "RAM - VDD2", formatVdd2(STOCK_VDD2_UV), formatVdd2((int)g_configCheck.current.vdd2Uv));
+        if (g_configCheck.current.vddqUv != (u32)g.vddqStartMv * 1000U)
+            printCompactWrong(row, "RAM - VDDQ", formatMv(g.vddqStartMv), formatMv((int)(g_configCheck.current.vddqUv / 1000U)));
+        if (g_configCheck.current.cpuMaxKHz != 1963500U)
+            printCompactWrong(row, "CPU - Max", "1963MHz", std::to_string(g_configCheck.current.cpuMaxKHz / 1000U) + "MHz");
         if (g_configCheck.current.lowVminMv != STOCK_LOW_VMIN_MV)
-            printSingleConfigCheck(row, "Low VMIN", formatMv(STOCK_LOW_VMIN_MV), formatMv(g_configCheck.current.lowVminMv), false), row += 5;
-        uiPrintf(row++, "Check the remaining Preparation values too.");
+            printCompactWrong(row, "CPU - Low VMIN", formatMv(STOCK_LOW_VMIN_MV), formatMv(g_configCheck.current.lowVminMv));
+        if (g_configCheck.current.highVminMv != STOCK_HIGH_VMIN_MV)
+            printCompactWrong(row, "CPU - High VMIN", formatMv(STOCK_HIGH_VMIN_MV), formatMv(g_configCheck.current.highVminMv));
+        if (g_configCheck.current.tableConf != 3)
+            printCompactWrong(row, "CPU - UV Table", "1683 Tbreak", cpuTableLabel(g_configCheck.current.tableConf));
+        if (g_configCheck.current.lowUv != STOCK_LOW_UV)
+            printCompactWrong(row, "CPU - Low UV", "0", std::to_string(g_configCheck.current.lowUv));
+        if (g_configCheck.current.highUv != STOCK_HIGH_UV)
+            printCompactWrong(row, "CPU - High UV", "0", std::to_string(g_configCheck.current.highUv));
+        if (g_configCheck.current.cpuBoostKHz != 1785000U)
+            printCompactWrong(row, "HOC Toolkit - CPU Boost", "1785MHz", std::to_string(g_configCheck.current.cpuBoostKHz / 1000U) + "MHz");
     } else if (m & Config_LowUv) {
         printSingleConfigCheck(row, "CPU Low UV", std::to_string(targetLowUv()), std::to_string(g_configCheck.current.lowUv), g_configCheck.current.lowUv == targetLowUv());
         row += 5;
@@ -1787,8 +1871,10 @@ int main(int argc, char** argv) {
     migrateLegacyState();
     if (!loadState()) saveState();
 
-    // First beta16 start: identify Mariko DRAM before Preparation.
-    if (g.stage == Stage::HardwareDetection && !g.ramDetected)
+    // Identify Mariko DRAM on every upgraded state that does not have it yet.
+    // New users remain on the dedicated Hardware Detection page; progressed
+    // users are enriched silently without losing already-tuned RAM values.
+    if (!g.ramDetected)
         detectRamHardware();
 
     g_interruptedPrompt = g.testRunning;
@@ -1983,9 +2069,20 @@ int main(int argc, char** argv) {
             if (isVminSweepStage(g.stage)) {
                 runAutomaticVminScan();
             } else {
+                const u32 cfgMask = activeConfigMask();
                 stress::Kind skipKind;
                 int skipSeconds = 0;
-                if (testPlan(g.stage, skipKind, skipSeconds) || activeConfigMask() != Config_None) {
+                if (cfgMask != Config_None) {
+                    // KNOWN PASS skips the reboot/stress validation, not the
+                    // requirement to actually have the requested HOC value set.
+                    if (verifyPersistentSettings(cfgMask)) {
+                        g_manualPass = true;
+                        handlePass();
+                        g_manualPass = false;
+                    } else {
+                        g_configPrompt = true;
+                    }
+                } else if (testPlan(g.stage, skipKind, skipSeconds)) {
                     g_manualPass = true;
                     handlePass();
                     g_manualPass = false;

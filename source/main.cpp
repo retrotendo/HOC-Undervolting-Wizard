@@ -223,8 +223,8 @@ const char* stageName(Stage s) {
     switch (s) {
         case Stage::HardwareDetection: return "Hardware Detection";
         case Stage::Preparation: return "Preparation";
-        case Stage::LowUvQuick: return "CPU Low UV - Boot Search";
-        case Stage::LowUvValidateQuick: return "CPU Low UV - Quick Validation";
+        case Stage::LowUvQuick: return "CPU Low UV - 1 Min Search";
+        case Stage::LowUvValidateQuick: return "CPU Low UV - Legacy Quick Validation";
         case Stage::LowUvLong: return "CPU Low UV - 1 Hour Validation";
         case Stage::LowVminQuick: return "CPU Low VMIN - Quick Search @ 510";
         case Stage::LowVminLong: return "CPU Low VMIN - Floor Sweep @ 510";
@@ -258,6 +258,7 @@ const char* stageName(Stage s) {
 
 bool testPlan(Stage s, stress::Kind& kind, int& seconds) {
     switch (s) {
+        case Stage::LowUvQuick:
         case Stage::LowUvValidateQuick:
         case Stage::LowVminQuick:
         case Stage::HighUvQuick:
@@ -940,8 +941,8 @@ const char* compactStepName(Stage s) {
     switch (s) {
         case Stage::HardwareDetection: return "Hardware Detection";
         case Stage::Preparation: return "Preparation";
-        case Stage::LowUvQuick: return "CPU Low UV - Boot Search";
-        case Stage::LowUvValidateQuick: return "CPU Low UV - Quick Test";
+        case Stage::LowUvQuick: return "CPU Low UV - 1 Min Search";
+        case Stage::LowUvValidateQuick: return "CPU Low UV - Legacy Quick Test";
         case Stage::LowUvLong: return "CPU Low UV - Validate";
         case Stage::LowVminQuick: return "CPU Low VMIN";
         case Stage::LowVminLong: return "CPU Low VMIN - Clock Check";
@@ -1272,7 +1273,7 @@ void renderRebootConfirm() {
     uiPrintf(9, "\x1b[33mIf the console does NOT boot:\x1b[0m");
     uiPrintf(10, "1. In Hekate start CFW No OC.");
     if (m & Config_LowUv)
-        uiPrintf(11, "2. Lower Low UV by one step.");
+        uiPrintf(11, "2. Restore previous Low UV (one step back).");
     else
         uiPrintf(11, "2. Restore the previous safe value.");
     uiPrintf(12, "3. Restart normal CFW.");
@@ -1594,9 +1595,11 @@ void handlePass() {
             g.stageReadyAfterBoot = false;
             break;
         case Stage::LowUvQuick:
+            // Every candidate must both boot and pass the 1-minute CPU test
+            // before it becomes the new last-known-good Low UV value.
             g.lowUvGood = g.lowUvTest;
             if (g.lowUvTest >= LOW_UV_MAX) {
-                g.stage = Stage::LowUvValidateQuick;
+                g.stage = Stage::LowUvLong;
                 g.stageReadyAfterBoot = true;
             } else {
                 ++g.lowUvTest;
@@ -1743,7 +1746,10 @@ void handleFail(bool didNotBoot) {
             g.recoveryNeeded = didNotBoot;
             break;
         case Stage::LowUvQuick:
-            g.stage = Stage::LowUvValidateQuick;
+            // Candidate failed either to boot or to pass its 1-minute test.
+            // Restore the previous last-known-good value, reboot, then run
+            // the 1-hour validation on that recovered value.
+            g.stage = Stage::LowUvLong;
             g.recoveryNeeded = didNotBoot;
             g.pendingConfigMask = Config_LowUv;
             break;
@@ -2112,7 +2118,7 @@ int main(int argc, char** argv) {
                 g.pendingConfigMask = Config_None;
                 if (g.stage == Stage::Preparation) {
                     if (g.lowUvGood >= LOW_UV_MAX) {
-                        g.stage = Stage::LowUvValidateQuick;
+                        g.stage = Stage::LowUvLong;
                         g.stageReadyAfterBoot = true;
                     } else {
                         g.stage = Stage::LowUvQuick;
@@ -2120,7 +2126,9 @@ int main(int argc, char** argv) {
                         g.stageReadyAfterBoot = false;
                     }
                 } else if (g.stage == Stage::LowUvQuick) {
-                    handlePass();
+                    // Boot success alone is not a PASS. Stay on the same
+                    // candidate and require the 1-minute CPU test next.
+                    g.stageReadyAfterBoot = true;
                 } else {
                     g.stageReadyAfterBoot = true;
                 }

@@ -87,7 +87,7 @@ typedef struct {
 } HocMonRawContext;
 
 _Static_assert(sizeof(HocMonRawContext) == 0x500, "Horizon OC context size mismatch");
-_Static_assert(offsetof(HocMonContextPrefix, dramID) == 403, "Unexpected Horizon OC API-v2 context layout");
+_Static_assert(offsetof(HocMonContextPrefix, dramID) == 404, "Unexpected Horizon OC API-v2 context layout");
 
 /* Relevant indexes from Horizon OC HocClkConfigValue. */
 enum {

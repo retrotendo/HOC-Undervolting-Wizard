@@ -1177,12 +1177,8 @@ void renderConfigPrompt() {
     uiPrintf(1, "\x1b[31mBattery Wizard - SETTING NOT READY\x1b[0m");
     uiPrintf(2, "Step : %s", compactStepName(g.stage));
     uiPrintf(3, "----------------------------------------");
-    if (g.stage == Stage::Preparation) {
-        uiPrintf(4, "X : Use current tuning as baseline");
-        uiPrintf(5, "\x1b[33mY : RAW CONFIG DEBUG\x1b[0m");
-    }
     if (!g_configCheck.readOk) {
-        const int r = (g.stage == Stage::Preparation) ? 7 : 5;
+        const int r = 5;
         uiPrintf(r, "Could not read Horizon OC config.ini");
         uiPrintf(r + 1, "Result : 0x%08X", g_configCheck.rc);
         uiPrintf(r + 4, "A : Check again");
@@ -1192,7 +1188,7 @@ void renderConfigPrompt() {
     }
 
     const u32 m = g_configCheck.mask;
-    int row = (g.stage == Stage::Preparation) ? 7 : 5;
+    int row = 5;
     if (m & Config_Prepare) {
         uiPrintf(row++, "Fix these Preparation values:");
         row++;
@@ -1243,7 +1239,12 @@ void renderConfigPrompt() {
     }
     uiPrintf(row + 1, "Fix \x1b[31mWRONG\x1b[0m values in Horizon OC.");
     uiPrintf(row + 3, "A : Check again");
-    uiPrintf(row + 4, "B : Back");
+    if (g.stage == Stage::Preparation) {
+        uiPrintf(row + 4, "X : Use current settings as baseline");
+        uiPrintf(row + 5, "B : Back");
+    } else {
+        uiPrintf(row + 4, "B : Back");
+    }
     consoleUpdate(nullptr);
 }
 
@@ -1267,8 +1268,18 @@ void renderRebootConfirm() {
         uiPrintf(6, "\x1b[32mVDD2 %s is set.\x1b[0m", formatVdd2(targetVdd2Uv()).c_str());
     else if (m & Config_HighUv)
         uiPrintf(6, "\x1b[32mHigh UV %d is set.\x1b[0m", targetHighUv());
-    uiPrintf(9, "A : Restart console");
-    uiPrintf(10, "B : Back");
+
+    uiPrintf(9, "\x1b[33mIf the console does NOT boot:\x1b[0m");
+    uiPrintf(10, "1. In Hekate start CFW No OC.");
+    if (m & Config_LowUv)
+        uiPrintf(11, "2. Lower Low UV by one step.");
+    else
+        uiPrintf(11, "2. Restore the previous safe value.");
+    uiPrintf(12, "3. Restart normal CFW.");
+    uiPrintf(13, "4. Open the Wizard again.");
+
+    uiPrintf(16, "A : Restart console");
+    uiPrintf(17, "B : Back");
     consoleUpdate(nullptr);
 }
 
@@ -1298,8 +1309,7 @@ void renderPreparation() {
 
     uiPrintf(29, "A : Check settings");
     uiPrintf(30, "X : Use current settings as baseline");
-    uiPrintf(31, "+ : Known PASS / Skip");
-    uiPrintf(32, "B : Exit    - : Reset");
+    uiPrintf(31, "B : Exit    - : Reset");
 }
 
 
@@ -2197,9 +2207,6 @@ int main(int argc, char** argv) {
                     g_rebootConfirm = true;
                 }
                 redraw = true;
-            } else if ((k & HidNpadButton_Y) && g.stage == Stage::Preparation) {
-                openConfigDebug();
-                redraw = true;
             } else if (k & HidNpadButton_A) {
                 const u32 mask = activeConfigMask();
                 if (verifyPersistentSettings(mask)) {
@@ -2306,7 +2313,7 @@ int main(int argc, char** argv) {
             if (captureCurrentSettingsBaseline()) g_rebootConfirm = true;
             else g_configPrompt = true;
             redraw = true;
-        } else if (k & HidNpadButton_Plus) {
+        } else if ((k & HidNpadButton_Plus) && g.stage != Stage::Preparation) {
             if (isVminSweepStage(g.stage)) {
                 runAutomaticVminScan();
             } else {

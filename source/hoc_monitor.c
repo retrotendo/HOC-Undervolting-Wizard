@@ -278,10 +278,11 @@ Result hocmonGetHardware(HocMonHardware* out)
      * Mariko DRAM IDs and the adjacent boolean instead.
      */
     const u8* bytes = (const u8*)&raw;
+    /* consoleType is not ABI-stable across HOC 2.6.x context layouts.
+     * It is not needed to choose the RAM/VDDQ baseline, so do not reject an
+     * otherwise unambiguous DRAM identification because of this field. */
     s32 consoleType = -1;
     memcpy(&consoleType, bytes + 408, sizeof(consoleType));
-    if (consoleType < 0 || consoleType > 3)
-        return 3;
 
     const u8 currentId = bytes[403];
     const u8 currentIs8GB = bytes[404];

@@ -58,6 +58,13 @@ typedef struct {
     u32 cpuBoostKHz;
 } HocMonConfig;
 
+#define HOCMON_CONFIG_DEBUG_VALUE_COUNT 256
+typedef struct {
+    u32 apiVersion;
+    char version[64];
+    u64 values[HOCMON_CONFIG_DEBUG_VALUE_COUNT];
+} HocMonConfigDebug;
+
 enum {
     HocMonModule_CPU = 0,
     HocMonModule_GPU = 1,
@@ -78,6 +85,9 @@ Result hocmonGetHardwareDebug(HocMonHardwareDebug* out);
 
 /* Read the persistent Horizon OC/KIP values used by the Battery Wizard. */
 Result hocmonGetConfig(HocMonConfig* out);
+
+/* Raw hoc:clk config-list diagnostics. Read-only; used by debug builds. */
+Result hocmonGetConfigDebug(HocMonConfigDebug* out);
 
 #ifdef __cplusplus
 }

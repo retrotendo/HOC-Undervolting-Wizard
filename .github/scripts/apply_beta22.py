@@ -52,20 +52,6 @@ if old not in s:
     raise SystemExit('RamProfile anchor not found')
 s = s.replace(old, new)
 
-old = '''        f << "Detected RAM: " << rp.name << " (ID " << g.dramId << ")\\
-";
-        f << "VDDQ starting point: " << g.vddqStartMv << " mV\\
-";'''
-new = '''        f << "Detected RAM: " << rp.name << " (ID " << g.dramId << ")\\
-";
-        f << "VDDQ starting point: " << g.vddqStartMv << " mV\\
-";
-        f << "Horizon OC guide range: " << rp.ocRange << "\\
-";'''
-if old not in s:
-    raise SystemExit('results anchor not found')
-s = s.replace(old, new)
-
 old = '''        uiPrintf(8, "Module     : %s", rp.name);
         uiPrintf(9, "DRAM ID    : %d", g.dramId);
         uiPrintf(11, "VDDQ start : %d mV", g.vddqStartMv);

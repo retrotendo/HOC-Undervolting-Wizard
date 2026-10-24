@@ -3,7 +3,8 @@
  *
  * Uses the public Horizon-OC hoc:clk IPC service. The stable context fields are
  * used for clocks/voltages; current API-v2 context/config fields are used for
- * DRAM identification and read-only persistent-setting verification.
+ * DRAM identification and persistent-setting verification. Temporary CPU/GPU/
+ * MEM overrides can also be written through HOC's public SetOverride IPC.
  *
  * SPDX-License-Identifier: GPL-2.0-only
  */
@@ -45,8 +46,17 @@ typedef struct {
     u32 cpuBoostKHz;
 } HocMonConfig;
 
+enum {
+    HocMonModule_CPU = 0,
+    HocMonModule_GPU = 1,
+    HocMonModule_MEM = 2,
+};
+
 /* Read CPU/GPU/MEM target, real and temporary override clocks + CPU voltage. */
 Result hocmonGetClocks(HocMonClocks* out);
+
+/* Set one Horizon OC Temporary Override. hz=0 clears that module override. */
+Result hocmonSetOverride(u32 module, u32 hz);
 
 /* Read DRAM identity from Horizon OC API-v2 current context. */
 Result hocmonGetHardware(HocMonHardware* out);

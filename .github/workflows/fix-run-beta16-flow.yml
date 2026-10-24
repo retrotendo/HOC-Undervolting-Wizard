@@ -27,9 +27,10 @@ jobs:
         run: make -j2
       - name: Commit patched source
         run: |
-          git config user.name "retrotendo"
-          git config user.email "info@retrotendo.de"
-          git add source/main.cpp Makefile UPDATE.txt RELEASE_NOTES_v0.4.0-beta.16.md README.md
-          git diff --cached --quiet && exit 0
-          git commit -m "beta16: guided reboot and automatic VMIN plateau flow"
-          git push origin HEAD:beta15-guided-reboot-vmin-plateaus
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git -C "$GITHUB_WORKSPACE" config user.name "retrotendo"
+          git -C "$GITHUB_WORKSPACE" config user.email "info@retrotendo.de"
+          git -C "$GITHUB_WORKSPACE" add source/main.cpp Makefile UPDATE.txt RELEASE_NOTES_v0.4.0-beta.16.md README.md
+          if git -C "$GITHUB_WORKSPACE" diff --cached --quiet; then exit 0; fi
+          git -C "$GITHUB_WORKSPACE" commit -m "beta16: guided reboot and automatic VMIN plateau flow"
+          git -C "$GITHUB_WORKSPACE" push origin HEAD:beta15-guided-reboot-vmin-plateaus

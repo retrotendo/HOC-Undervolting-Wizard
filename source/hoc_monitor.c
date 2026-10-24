@@ -7,7 +7,8 @@
  * Horizon-OC distributes this interface under GNU GPL version 2.
  *
  * Modifications for HOC Undervolting Wizard, 2026:
- * - read-only clock/override/voltage access;
+ * - clock/override/voltage context access;
+ * - Temporary Override writes through HOC's public SetOverride IPC;
  * - read DRAM ID for automatic VDDQ starting-point selection;
  * - read persistent HOC/KIP settings so reboot steps can be verified first.
  *
@@ -24,6 +25,7 @@
 #define HOCCLK_IPC_SERVICE_NAME "hoc:clk"
 #define HOCCLK_IPC_CMD_GET_API_VERSION 0
 #define HOCCLK_IPC_CMD_GET_CURRENT_CONTEXT 2
+#define HOCCLK_IPC_CMD_SET_OVERRIDE 8
 #define HOCCLK_IPC_CMD_GET_CONFIG_VALUES 9
 #define HOCCLK_API_VERSION_REQUIRED 2
 
@@ -86,8 +88,14 @@ typedef struct {
     u8 reserved[0x500 - sizeof(HocMonStableContext)];
 } HocMonRawContext;
 
+typedef struct {
+    s32 module;
+    u32 hz;
+} HocMonSetOverrideArgs;
+
 _Static_assert(sizeof(HocMonRawContext) == 0x500, "Horizon OC context size mismatch");
 _Static_assert(offsetof(HocMonContextPrefix, dramID) == 403, "Unexpected Horizon OC API-v2 context layout");
+_Static_assert(sizeof(HocMonSetOverrideArgs) == 8, "Unexpected Horizon OC SetOverride args layout");
 
 /* Relevant indexes from Horizon OC HocClkConfigValue. */
 enum {
@@ -164,6 +172,30 @@ Result hocmonGetClocks(HocMonClocks* out)
     /* Stable voltage order: SOC, VDD2, CPU, GPU, VDDQ, display, battery. */
     out->cpuVoltageUv = ctx.stable.voltages[HOCCLK_VOLTAGE_CPU_INDEX];
     return 0;
+}
+
+Result hocmonSetOverride(u32 module, u32 hz)
+{
+    if (module > HocMonModule_MEM)
+        return 1;
+
+    Service srv = {0};
+    u32 api = 0;
+    Result rc = hocmonOpen(&srv, &api);
+    if (R_FAILED(rc))
+        return rc;
+    if (api < HOCCLK_API_VERSION_REQUIRED) {
+        serviceClose(&srv);
+        return 2;
+    }
+
+    const HocMonSetOverrideArgs args = {
+        .module = (s32)module,
+        .hz = hz,
+    };
+    rc = serviceDispatchIn(&srv, HOCCLK_IPC_CMD_SET_OVERRIDE, args);
+    serviceClose(&srv);
+    return rc;
 }
 
 Result hocmonGetHardware(HocMonHardware* out)

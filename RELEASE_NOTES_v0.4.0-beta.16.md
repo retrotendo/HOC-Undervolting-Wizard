@@ -25,15 +25,28 @@ Persistent HOC changes now use a separate setting/reboot phase:
 6. After reopening the Wizard, confirm whether CFW booted normally with the new value.
 7. The relevant 1-minute or 1-hour test is shown only after a successful boot confirmation.
 
-Already-confirmed persistent values are no longer repeated on later test pages. Temporary Overrides are still shown whenever they must be changed.
+Already-confirmed persistent values are no longer repeated on later test pages.
 
-## CPU voltage-region scan and validation
+## Fully automatic CPU Low VMIN voltage scan
 
-The Wizard measures all six CPU points:
+The first automatic Temporary Override workflow is now implemented for the Low VMIN scan.
 
-**510 -> 612 -> 714 -> 816 -> 918 -> 1020 MHz**
+After the Low VMIN candidate has booted successfully, the Wizard asks once before starting. Press **A = START SCAN** and it then runs the complete measurement without further user input:
 
-Each measurement now displays a short 3-sample progress bar. The median CPU rail reading is grouped on HOC's 5 mV steps.
+1. Saves the currently active CPU/GPU/RAM Temporary Overrides.
+2. Sets GPU to **384 MHz** and RAM to **1331.2 MHz** automatically.
+3. Switches CPU automatically through **510 -> 612 -> 714 -> 816 -> 918 -> 1020 MHz**.
+4. Waits for HOC/governor to settle at each frequency.
+5. Takes **3 valid HOC CPU-rail samples** at each point and uses the median.
+6. Groups the readings into HOC's 5 mV CPU-voltage regions.
+7. Restores the Temporary Overrides that were active before the scan.
+8. Shows the detected regions and the highest clock still on the configured Low VMIN floor.
+
+The scan automatically retries once if a clock/context update is late. If HOC refuses an override or three valid readings cannot be obtained, the scan stops and reports the problem instead of accepting incomplete data.
+
+The Wizard does **not** write persistent Low VMIN/UV/RAM voltage settings. Only Temporary Overrides are written during this automatic scan.
+
+## CPU voltage-region validation
 
 Instead of validating only the highest clock still on the Low VMIN floor, beta.16 identifies every distinct measured CPU-voltage region and runs the 1-hour CPU test at the **highest frequency of each region**.
 
@@ -48,7 +61,7 @@ Detected voltage regions are written to `results.txt` together with the final tu
 ## Existing beta.15 behavior retained
 
 - Ultrahand-friendly right-side layout
-- vertical TEST BLOCKED Required / Current / OK-WRONG display
+- vertical TEST BLOCKED Required / Current / OK-WRONG display for manual test overrides
 - actual live CPU/GPU/RAM override values
 - Full Application Mode requirement
 - built-in CPU/RAM/Combined/GPU stress engines
@@ -57,4 +70,4 @@ Detected voltage regions are written to `results.txt` together with the final tu
 
 ## Important beta note
 
-The code builds successfully in the devkitPro CI environment, but the new DRAM detection, persistent-setting verification and automatic reboot handoff still require real-hardware validation. This remains a pre-release.
+The code builds in the devkitPro CI environment, but the new DRAM detection, persistent-setting verification, automatic reboot handoff and automatic Temporary Override scan still require real-hardware validation. This remains a pre-release.

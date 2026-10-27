@@ -1,0 +1,43 @@
+name: Apply beta29 preparation fix
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - beta29-preparation-fix
+    paths:
+      - '.github/scripts/apply_beta29_prep_fix.py'
+      - '.github/workflows/apply-beta29-prep-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-build-commit:
+    runs-on: ubuntu-latest
+    container: devkitpro/devkita64:latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: beta29-preparation-fix
+          fetch-depth: 0
+
+      - name: Apply patch
+        run: python3 .github/scripts/apply_beta29_prep_fix.py
+
+      - name: Build NRO
+        run: make -j2
+
+      - name: Commit patched source
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git -C "$GITHUB_WORKSPACE" config user.name "github-actions[bot]"
+          git -C "$GITHUB_WORKSPACE" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "$GITHUB_WORKSPACE" add source/main.cpp source/hoc_monitor.c source/hoc_monitor.h Makefile UPDATE.txt RELEASE_NOTES_v0.4.0-beta.29.md
+          if git -C "$GITHUB_WORKSPACE" diff --cached --quiet; then
+            echo "No source changes to commit."
+            exit 0
+          fi
+          git -C "$GITHUB_WORKSPACE" commit -m "Fix Preparation baseline and HOC Save KIP path (beta.29)"
+          git -C "$GITHUB_WORKSPACE" push origin HEAD:beta29-preparation-fix

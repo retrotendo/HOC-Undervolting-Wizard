@@ -26,7 +26,9 @@ anchor = '''bool preparationFixedSettingsMatch(const HocMonConfig& c) {'''
 if anchor not in s:
     raise SystemExit('preparationFixedSettingsMatch anchor not found')
 
-insert = r'''bool writeAutomaticPreparationConfig(std::string& errorText) {
+insert = r'''bool verifyPersistentSettings(u32 mask);
+
+bool writeAutomaticPreparationConfig(std::string& errorText) {
     errorText.clear();
 
     std::ifstream src(HOC_CONFIG_INI);
@@ -108,7 +110,6 @@ insert = r'''bool writeAutomaticPreparationConfig(std::string& errorText) {
         appendMissing();
     }
 
-    // Keep one immediate pre-change backup so manual recovery is possible.
     if (!copyFile(HOC_CONFIG_INI, HOC_CONFIG_BACKUP)) {
         errorText = "Could not create config.ini backup.";
         return false;
@@ -214,7 +215,6 @@ if old not in s:
     raise SystemExit('preparation footer anchor not found')
 s = s.replace(old, new, 1)
 
-# Add auto-prep input handling before the normal reboot-confirm handler.
 old = '''        if (g_rebootConfirm) {\n            if (k & HidNpadButton_A) {'''
 new = r'''        if (g_autoPrepConfirm) {
             if (k & HidNpadButton_A) {
@@ -229,8 +229,6 @@ new = r'''        if (g_autoPrepConfirm) {
 
                     g_rebootError = appletRequestToReboot();
                     if (R_FAILED(g_rebootError)) {
-                        // Keep rebootPending persisted so a manual reboot still
-                        // resumes at the normal boot check on next launch.
                         saveState();
                         consoleClear();
                         uiPrintf(5, "\x1b[31mAutomatic restart failed.\x1b[0m");
@@ -263,7 +261,6 @@ if old not in s:
     raise SystemExit('reboot handler anchor not found')
 s = s.replace(old, new, 1)
 
-# Add Y action on the Preparation page, while keeping A/X behavior untouched.
 old = '''        } else if (g.stage == Stage::Preparation && (k & HidNpadButton_X)) {\n            if (captureCurrentSettingsBaseline()) g_rebootConfirm = true;\n            else g_configPrompt = true;\n            redraw = true;\n        } else if ((k & HidNpadButton_Plus) && g.stage != Stage::Preparation) {'''
 new = '''        } else if (g.stage == Stage::Preparation && (k & HidNpadButton_Y)) {\n            g_autoPrepError.clear();\n            g_autoPrepConfirm = true;\n            redraw = true;\n        } else if (g.stage == Stage::Preparation && (k & HidNpadButton_X)) {\n            if (captureCurrentSettingsBaseline()) g_rebootConfirm = true;\n            else g_configPrompt = true;\n            redraw = true;\n        } else if ((k & HidNpadButton_Plus) && g.stage != Stage::Preparation) {'''
 if old not in s:

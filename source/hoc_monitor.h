@@ -86,6 +86,13 @@ Result hocmonGetHardwareDebug(HocMonHardwareDebug* out);
 /* Read the persistent Horizon OC/KIP values used by the Battery Wizard. */
 Result hocmonGetConfig(HocMonConfig* out);
 
+/*
+ * Horizon OC 2.5.1 only: apply the Wizard Preparation values through HOC's
+ * own SetConfigValues IPC and persist them with SetKipData (Save KIP).
+ * Returns a non-zero Result when the running HOC layout/version is unsupported.
+ */
+Result hocmonApplyPreparation251(const HocMonConfig* desired);
+
 /* Raw hoc:clk config-list diagnostics. Read-only; used by debug builds. */
 Result hocmonGetConfigDebug(HocMonConfigDebug* out);
 

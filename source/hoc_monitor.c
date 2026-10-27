@@ -28,6 +28,8 @@
 #define HOCCLK_IPC_CMD_GET_CURRENT_CONTEXT 2
 #define HOCCLK_IPC_CMD_SET_OVERRIDE 8
 #define HOCCLK_IPC_CMD_GET_CONFIG_VALUES 9
+#define HOCCLK_IPC_CMD_SET_CONFIG_VALUES 10
+#define HOCCLK_IPC_CMD_SET_KIP_DATA 12
 #define HOCCLK_API_VERSION_REQUIRED 2
 
 #define HOCCLK_STABLE_MODULE_COUNT 5
@@ -111,6 +113,23 @@ enum {
     CFG_CPU_HIGH_VMIN_MV = 81,
     CFG_CPU_MAX_KHZ = 83,
     CFG_CPU_BOOST_KHZ = 85,
+};
+
+/* Exact HocClkConfigValue indexes from Horizon OC tag 2.5.1. */
+enum {
+    CFG251_UNCAPPED_CLOCKS = 5,
+    CFG251_KIP_VERSION = 34,
+    CFG251_HP_MODE = 35,
+    CFG251_VDD2_UV = 36,
+    CFG251_RAM_MAX_KHZ = 39,
+    CFG251_VDDQ_UV = 40,
+    CFG251_CPU_LOW_UV = 72,
+    CFG251_CPU_HIGH_UV = 73,
+    CFG251_CPU_TABLE = 74,
+    CFG251_CPU_LOW_VMIN_MV = 75,
+    CFG251_CPU_HIGH_VMIN_MV = 76,
+    CFG251_CPU_MAX_KHZ = 78,
+    CFG251_CPU_BOOST_KHZ = 80,
 };
 
 /* Oversized read-only buffer. The HOC service only requires >= its current list size. */
@@ -340,6 +359,67 @@ Result hocmonGetConfig(HocMonConfig* out)
     out->cpuMaxKHz = (u32)cfg.values[CFG_CPU_MAX_KHZ];
     out->cpuBoostKHz = (u32)cfg.values[CFG_CPU_BOOST_KHZ];
     return 0;
+}
+
+Result hocmonApplyPreparation251(const HocMonConfig* desired)
+{
+    if (!desired)
+        return 1;
+
+    Service srv = {0};
+    u32 api = 0;
+    Result rc = hocmonOpen(&srv, &api);
+    if (R_FAILED(rc))
+        return rc;
+    if (api < HOCCLK_API_VERSION_REQUIRED) {
+        serviceClose(&srv);
+        return 2;
+    }
+
+    /* Start from HOC's complete live config list so unrelated settings remain untouched. */
+    HocMonRawConfig cfg;
+    memset(&cfg, 0, sizeof(cfg));
+    rc = serviceDispatch(&srv, HOCCLK_IPC_CMD_GET_CONFIG_VALUES,
+        .buffer_attrs = { SfBufferAttr_HipcAutoSelect | SfBufferAttr_Out },
+        .buffers = {{ &cfg, sizeof(cfg) }},
+    );
+    if (R_FAILED(rc)) {
+        serviceClose(&srv);
+        return rc;
+    }
+
+    /* Never write version-dependent indexes unless the running KIP is exactly 2.5.1. */
+    if ((u32)cfg.values[CFG251_KIP_VERSION] != 251U) {
+        serviceClose(&srv);
+        return 4;
+    }
+
+    cfg.values[CFG251_UNCAPPED_CLOCKS] = desired->uncappedClocks ? 1U : 0U;
+    cfg.values[CFG251_HP_MODE] = desired->hpMode ? 1U : 0U;
+    cfg.values[CFG251_VDD2_UV] = desired->vdd2Uv;
+    cfg.values[CFG251_RAM_MAX_KHZ] = desired->ramMaxKHz;
+    cfg.values[CFG251_VDDQ_UV] = desired->vddqUv;
+    cfg.values[CFG251_CPU_LOW_UV] = (u64)desired->lowUv;
+    cfg.values[CFG251_CPU_HIGH_UV] = (u64)desired->highUv;
+    cfg.values[CFG251_CPU_TABLE] = (u64)desired->tableConf;
+    cfg.values[CFG251_CPU_LOW_VMIN_MV] = (u64)desired->lowVminMv;
+    cfg.values[CFG251_CPU_HIGH_VMIN_MV] = (u64)desired->highVminMv;
+    cfg.values[CFG251_CPU_MAX_KHZ] = desired->cpuMaxKHz;
+    cfg.values[CFG251_CPU_BOOST_KHZ] = desired->cpuBoostKHz;
+
+    /* This is the same public IPC path used by the HOC overlay controls. */
+    rc = serviceDispatch(&srv, HOCCLK_IPC_CMD_SET_CONFIG_VALUES,
+        .buffer_attrs = { SfBufferAttr_HipcAutoSelect | SfBufferAttr_In },
+        .buffers = {{ &cfg, sizeof(cfg) }},
+    );
+    if (R_SUCCEEDED(rc)) {
+        /* Equivalent to Horizon OC's Save KIP action. */
+        const u32 dummy = 0;
+        rc = serviceDispatchIn(&srv, HOCCLK_IPC_CMD_SET_KIP_DATA, dummy);
+    }
+
+    serviceClose(&srv);
+    return rc;
 }
 
 Result hocmonGetConfigDebug(HocMonConfigDebug* out)

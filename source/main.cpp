@@ -914,13 +914,40 @@ void resetPreparationBaselineState() {
 }
 
 bool applyAutomaticPreparation() {
-    if (!writeAutomaticPreparationConfig(g_autoPrepError)) return false;
-    if (!verifyPersistentSettings(Config_Prepare)) {
-        copyFile(HOC_CONFIG_BACKUP, HOC_CONFIG_INI);
-        fsdevCommitDevice("sdmc");
-        g_autoPrepError = "Readback check failed; previous config restored.";
+    HocMonConfig desired{};
+    desired.uncappedClocks = false;
+    desired.hpMode = false;
+    desired.ramMaxKHz = 1600000U;
+    desired.vdd2Uv = (u32)STOCK_VDD2_UV;
+    desired.vddqUv = (u32)g.vddqStartMv * 1000U;
+    desired.lowUv = STOCK_LOW_UV;
+    desired.highUv = STOCK_HIGH_UV;
+    desired.tableConf = 3;
+    desired.lowVminMv = STOCK_LOW_VMIN_MV;
+    desired.highVminMv = STOCK_HIGH_VMIN_MV;
+    desired.cpuMaxKHz = 1963500U;
+    desired.cpuBoostKHz = 1785000U;
+
+    const Result rc = hocmonApplyPreparation251(&desired);
+    if (R_FAILED(rc)) {
+        if (rc == 4)
+            g_autoPrepError = "Automatic setup currently supports Horizon OC 2.5.1 only.";
+        else {
+            char msg[96];
+            std::snprintf(msg, sizeof(msg), "Horizon OC Save KIP failed: 0x%08X", rc);
+            g_autoPrepError = msg;
+        }
         return false;
     }
+
+    // HOC's SetConfigValues updates config.ini and live config; SetKipData persists
+    // the KIP. Read the named INI keys back before allowing a reboot.
+    svcSleepThread(150'000'000);
+    if (!verifyPersistentSettings(Config_Prepare)) {
+        g_autoPrepError = "Horizon OC readback did not match the requested Preparation values.";
+        return false;
+    }
+
     resetPreparationBaselineState();
     g.pendingConfigMask = Config_Prepare;
     g.rebootPending = true;
@@ -962,6 +989,24 @@ bool captureCurrentSettingsBaseline() {
     saveState();
     return true;
 }
+
+void continueFromPreparationBaseline() {
+    // Nothing was changed: these values are already the user's active baseline.
+    // Do not perform a fake Preparation reboot. Move directly to the first new
+    // Low UV candidate, which will get its own normal set -> reboot -> 1 min test.
+    g.rebootPending = false;
+    g.pendingConfigMask = Config_None;
+    if (g.lowUvGood >= LOW_UV_MAX) {
+        g.stage = Stage::LowUvLong;
+        g.stageReadyAfterBoot = true;
+    } else {
+        g.stage = Stage::LowUvQuick;
+        g.lowUvTest = g.lowUvGood + 1;
+        g.stageReadyAfterBoot = false;
+    }
+    saveState();
+}
+
 
 bool configMatchesCurrent(u32 mask, const HocMonConfig& c) {
     if (mask & Config_Prepare) {
@@ -1407,11 +1452,11 @@ void renderAutoPrepConfirm() {
     uiPrintf(2, "Step : Automatic Preparation");
     uiPrintf(3, "----------------------------------------");
     uiPrintf(5, "Set all Preparation values automatically?");
-    uiPrintf(7, "The Wizard will update only the required");
-    uiPrintf(8, "Preparation keys in Horizon OC config.ini.");
+    uiPrintf(7, "Uses Horizon OC SetConfigValues + Save KIP.");
+    uiPrintf(8, "Only required Preparation values are changed.");
     uiPrintf(10, "VDDQ start : %d mV", g.vddqStartMv);
     uiPrintf(11, "Other Horizon OC values stay unchanged.");
-    uiPrintf(13, "Backup: config.ini.wizard.bak");
+    uiPrintf(13, "Horizon OC 2.5.1 is required for auto setup.");
     uiPrintf(15, "Values are read back before reboot.");
     uiPrintf(16, "If verification succeeds, reboot is automatic.");
     if (!g_autoPrepError.empty())
@@ -2397,7 +2442,7 @@ int main(int argc, char** argv) {
             if ((k & HidNpadButton_X) && g.stage == Stage::Preparation) {
                 if (captureCurrentSettingsBaseline()) {
                     g_configPrompt = false;
-                    g_rebootConfirm = true;
+                    continueFromPreparationBaseline();
                 }
                 redraw = true;
             } else if (k & HidNpadButton_A) {
@@ -2546,7 +2591,7 @@ int main(int argc, char** argv) {
             g_autoPrepConfirm = true;
             redraw = true;
         } else if (g.stage == Stage::Preparation && (k & HidNpadButton_X)) {
-            if (captureCurrentSettingsBaseline()) g_rebootConfirm = true;
+            if (captureCurrentSettingsBaseline()) continueFromPreparationBaseline();
             else g_configPrompt = true;
             redraw = true;
         } else if ((k & HidNpadButton_Plus) && g.stage != Stage::Preparation) {

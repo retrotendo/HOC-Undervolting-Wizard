@@ -6,6 +6,7 @@ on:
       - beta28-auto-preparation
     paths:
       - '.github/workflows/apply-beta28-auto-preparation.yml'
+      - '.github/scripts/apply_beta28.py'
   workflow_dispatch:
 
 permissions:

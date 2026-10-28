@@ -1275,7 +1275,7 @@ void renderVminScanScreen() {
     row++;
     uiPrintf(row++, "Previous overrides : %s", g_vminScanRestoreOk ? "\x1b[32mRESTORED\x1b[0m" : "\x1b[31mCHECK HOC\x1b[0m");
     row += 2;
-    uiPrintf(row++, "A : Continue to automatic 1-minute tests");
+    uiPrintf(row++, "A : Start automatic 1-minute tests");
     uiPrintf(row++, "B : Exit");
     consoleUpdate(nullptr);
 }
@@ -1374,7 +1374,7 @@ void renderBootPrompt() {
 
     if (state == BootInference::RequestedActive) {
         uiPrintf(row++, "\x1b[32mRequested value is active.\x1b[0m");
-        uiPrintf(row++, "The console appears to have booted with it.");
+        uiPrintf(row++, "Console booted with requested value.");
         row++;
         uiPrintf(row++, "Only continue if normal CFW booted AND:");
         uiPrintf(row++, " - no system freeze");
@@ -1386,20 +1386,20 @@ void renderBootPrompt() {
     } else if (state == BootInference::SaferActive) {
         uiPrintf(row++, "\x1b[33mRequested value is NOT active.\x1b[0m");
         uiPrintf(row++, "It looks like the console did not boot");
-        uiPrintf(row++, "successfully with the requested value and");
-        uiPrintf(row++, "was recovered to the previous working value.");
+        uiPrintf(row++, "Requested value likely did not boot.");
+        uiPrintf(row++, "Recovery restored last working value.");
         row++;
         if (g.stage == Stage::LowUvQuick)
             uiPrintf(row++, "\x1b[32mLast good value: Low UV %d\x1b[0m", active);
         else if (g.stage == Stage::LowVminQuick)
             uiPrintf(row++, "\x1b[32mLast good value: Low VMIN %d mV\x1b[0m", active);
         row++;
-        uiPrintf(row++, "Confirm only if this matches your recovery.");
+        uiPrintf(row++, "Confirm this matches your recovery.");
         uiPrintf(row++, "A : Confirm last good value");
         uiPrintf(row++, "X : This is not correct");
     } else {
-        uiPrintf(row++, "\x1b[31mCould not confirm the expected active value.\x1b[0m");
-        uiPrintf(row++, "Check Horizon OC / recovery state first.");
+        uiPrintf(row++, "\x1b[31mCould not confirm active value.\x1b[0m");
+        uiPrintf(row++, "Check Horizon OC / recovery state.");
         row += 2;
         uiPrintf(row++, "A : Check again");
         uiPrintf(row++, "X : Treat as unstable and recover");
@@ -1543,7 +1543,7 @@ void renderConfigPrompt() {
     if (m & (Config_Prepare | Config_LowUv | Config_LowVmin))
         uiPrintf(row + 4, "Y : Set required value(s) automatically");
     if (g.stage == Stage::Preparation) {
-        uiPrintf(row + 5, "X : Use current settings as baseline");
+        uiPrintf(row + 5, "X : Use my current settings as baseline");
         uiPrintf(row + 6, "B : Back");
     } else {
         uiPrintf(row + 5, "B : Back");
@@ -1557,15 +1557,15 @@ void renderAutoPrepConfirm() {
     uiPrintf(2, "Step : Automatic Setting");
     uiPrintf(3, "----------------------------------------");
     if (g_autoSetMask & Config_Prepare)
-        uiPrintf(5, "Set all required Preparation values automatically?");
+        uiPrintf(5, "Auto-set required Preparation values?");
     else if (g_autoSetMask & Config_LowUv)
         uiPrintf(5, "Set CPU Low UV %d automatically?", targetLowUv());
     else if (g_autoSetMask & Config_LowVmin)
         uiPrintf(5, "Set CPU Low VMIN %d mV automatically?", targetLowVmin());
-    uiPrintf(7, "Uses Horizon OC SetConfigValues + Save KIP.");
-    uiPrintf(8, "Unrelated Horizon OC values stay unchanged.");
+    uiPrintf(7, "Uses HOC SetConfigValues + Save KIP.");
+    uiPrintf(8, "Other Horizon OC values stay unchanged.");
     uiPrintf(10, "Horizon OC 2.5.1 is required.");
-    uiPrintf(12, "The value is read back before reboot is offered.");
+    uiPrintf(12, "Value is read back before reboot.");
     if (!g_autoPrepError.empty())
         uiPrintf(15, "\x1b[31m%s\x1b[0m", g_autoPrepError.c_str());
     uiPrintf(20, "A : Confirm - set value(s)");
@@ -1580,17 +1580,17 @@ void renderRebootConfirm() {
     uiPrintf(3, "----------------------------------------");
     const u32 m = g_configCheck.mask;
     if (m & Config_Prepare)
-        uiPrintf(5, "\x1b[32mPreparation values are saved and verified.\x1b[0m");
+        uiPrintf(5, "\x1b[32mPreparation values saved and verified.\x1b[0m");
     else if (m & Config_LowUv)
-        uiPrintf(5, "\x1b[32mLow UV %d is saved and verified.\x1b[0m", targetLowUv());
+        uiPrintf(5, "\x1b[32mLow UV %d saved and verified.\x1b[0m", targetLowUv());
     else if (m & Config_LowVmin)
-        uiPrintf(5, "\x1b[32mLow VMIN %d mV is saved and verified.\x1b[0m", targetLowVmin());
+        uiPrintf(5, "\x1b[32mLow VMIN %d mV saved and verified.\x1b[0m", targetLowVmin());
     else
-        uiPrintf(5, "\x1b[32mRequested setting is saved and verified.\x1b[0m");
+        uiPrintf(5, "\x1b[32mRequested setting saved and verified.\x1b[0m");
 
-    uiPrintf(7, "A reboot is required to apply the KIP value.");
-    uiPrintf(8, "After normal CFW boots, open this Wizard again.");
-    uiPrintf(10, "\x1b[33mIf normal CFW does not boot, freezes or crashes:\x1b[0m");
+    uiPrintf(7, "Reboot required to apply the KIP value.");
+    uiPrintf(8, "After reboot, open this Wizard again.");
+    uiPrintf(10, "\x1b[33mIf normal CFW fails to boot or crashes:\x1b[0m");
     uiPrintf(11, "1. Boot Hekate.");
     uiPrintf(12, "2. Start CFW No OC / without hoc.kip.");
     uiPrintf(13, "3. Restore the previous safe value.");
@@ -1623,10 +1623,10 @@ void renderPreparation() {
     uiPrintf(22, " - High UV         : 0");
 
     uiPrintf(24, "@ HOC Toolkit");
-    uiPrintf(26, " - CPU Boost       : Lowest selectable / 1785");
+    uiPrintf(26, " - CPU Boost : lowest / 1785 MHz");
 
     uiPrintf(28, "A : Check settings");
-    uiPrintf(29, "X : Use current settings as baseline");
+    uiPrintf(29, "X : Use my current settings as baseline");
     uiPrintf(30, "Y : Set values automatically + reboot");
     uiPrintf(31, "B : Exit    - : Reset");
 }
@@ -1649,9 +1649,9 @@ void renderTestStage() {
         if (configMask & Config_HighUv) uiPrintf(setRow++, " - High UV  : %d", targetHighUv());
         setRow += 2;
         if (g.stage == Stage::LowUvQuick)
-            uiPrintf(setRow++, "Find the highest Low UV that can boot normally.");
+            uiPrintf(setRow++, "Find highest Low UV that boots.");
         else if (g.stage == Stage::LowVminQuick)
-            uiPrintf(setRow++, "Lower Low VMIN in 10 mV steps until boot fails.");
+            uiPrintf(setRow++, "Lower Low VMIN 10 mV until boot fails.");
         uiPrintf(setRow++, "A : Check setting");
         if (configMask & (Config_LowUv | Config_LowVmin))
             uiPrintf(setRow++, "Y : Set value automatically");
@@ -1673,10 +1673,10 @@ void renderTestStage() {
         uiPrintf(row++, lowUv ? "CPU Low UV   : %d" : "CPU Low VMIN : %d mV",
                  lowUv ? g.lowUvGood : g.lowVminGood);
         row++;
-        uiPrintf(row++, "Next the Wizard maps the CPU voltage curve at:");
+        uiPrintf(row++, "Next, Wizard maps CPU voltage at:");
         uiPrintf(row++, "510 / 612 / 714 / 816 / 918 / 1020 MHz");
-        uiPrintf(row++, "and keeps only the highest frequency of each");
-        uiPrintf(row++, "different voltage region for stability testing.");
+        uiPrintf(row++, "It keeps highest frequency from each");
+        uiPrintf(row++, "different voltage region for testing.");
         row += 2;
         uiPrintf(row++, "A : Scan voltage regions automatically");
         uiPrintf(row++, "B : Exit");
@@ -1693,8 +1693,8 @@ void renderTestStage() {
             uiPrintf(row++, " %d. %s @ ~%d mV", i + 1,
                      formatClock(g.vminValidateHz[i]).c_str(), g.vminValidateMv[i]);
         row++;
-        uiPrintf(row++, "The Wizard will set every override automatically");
-        uiPrintf(row++, "and run each listed CPU frequency for 1 minute.");
+        uiPrintf(row++, "Wizard sets each override.");
+        uiPrintf(row++, "Each CPU frequency runs for 1 minute.");
         row += 2;
         uiPrintf(row++, "A : Start automatic validation");
         uiPrintf(row++, "B : Exit");

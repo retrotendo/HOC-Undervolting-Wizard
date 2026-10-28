@@ -1278,10 +1278,11 @@ void renderVminScanScreen() {
     int row = 10;
     for (int i = 0; i < g.vminValidateCount && i < 6; ++i)
         uiPrintf(row++, " %d. %s @ ~%d mV", i + 1, formatClock(g.vminValidateHz[i]).c_str(), g.vminValidateMv[i]);
-    row++;
-    uiPrintf(row++, "Previous overrides : %s", g_vminScanRestoreOk ? "\x1b[32mRESTORED\x1b[0m" : "\x1b[31mCHECK HOC\x1b[0m");
     row += 2;
-    uiPrintf(row++, "A : Start automatic 1-minute tests");
+    uiPrintf(row++, "A : Start automatic stability test");
+    row++;
+    uiPrintf(row++, "If the test crashes, reboot and");
+    uiPrintf(row++, "open the Wizard again.");
     uiPrintf(row++, "B : Exit");
     consoleUpdate(nullptr);
 }
@@ -1733,7 +1734,10 @@ void renderTestStage() {
         uiPrintf(row++, "Wizard sets each override.");
         uiPrintf(row++, "Each CPU frequency runs for 1 minute.");
         row += 2;
-        uiPrintf(row++, "A : Start automatic validation");
+        uiPrintf(row++, "A : Start automatic stability test");
+        row++;
+        uiPrintf(row++, "If the test crashes, reboot and");
+        uiPrintf(row++, "open the Wizard again.");
         uiPrintf(row++, "B : Exit");
         printResetHint(row - 1);
         return;
@@ -2625,6 +2629,7 @@ int main(int argc, char** argv) {
             if (k & HidNpadButton_A) {
                 if (g_vminScanSuccess) {
                     g_vminScanScreen = false;
+                    runAutomaticRegionValidation(g_scanForLowUv);
                     redraw = true;
                 } else {
                     g_vminScanScreen = false;

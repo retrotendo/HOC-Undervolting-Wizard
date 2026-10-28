@@ -422,6 +422,55 @@ Result hocmonApplyPreparation251(const HocMonConfig* desired)
     return rc;
 }
 
+Result hocmonApplyCpuLow251(int lowUv, int lowVminMv, u32 fieldsMask)
+{
+    if ((fieldsMask & 3U) == 0)
+        return 1;
+
+    Service srv = {0};
+    u32 api = 0;
+    Result rc = hocmonOpen(&srv, &api);
+    if (R_FAILED(rc))
+        return rc;
+    if (api < HOCCLK_API_VERSION_REQUIRED) {
+        serviceClose(&srv);
+        return 2;
+    }
+
+    HocMonRawConfig cfg;
+    memset(&cfg, 0, sizeof(cfg));
+    rc = serviceDispatch(&srv, HOCCLK_IPC_CMD_GET_CONFIG_VALUES,
+        .buffer_attrs = { SfBufferAttr_HipcAutoSelect | SfBufferAttr_Out },
+        .buffers = {{ &cfg, sizeof(cfg) }},
+    );
+    if (R_FAILED(rc)) {
+        serviceClose(&srv);
+        return rc;
+    }
+
+    if ((u32)cfg.values[CFG251_KIP_VERSION] != 251U) {
+        serviceClose(&srv);
+        return 4;
+    }
+
+    if (fieldsMask & 1U)
+        cfg.values[CFG251_CPU_LOW_UV] = (u64)lowUv;
+    if (fieldsMask & 2U)
+        cfg.values[CFG251_CPU_LOW_VMIN_MV] = (u64)lowVminMv;
+
+    rc = serviceDispatch(&srv, HOCCLK_IPC_CMD_SET_CONFIG_VALUES,
+        .buffer_attrs = { SfBufferAttr_HipcAutoSelect | SfBufferAttr_In },
+        .buffers = {{ &cfg, sizeof(cfg) }},
+    );
+    if (R_SUCCEEDED(rc)) {
+        const u32 dummy = 0;
+        rc = serviceDispatchIn(&srv, HOCCLK_IPC_CMD_SET_KIP_DATA, dummy);
+    }
+
+    serviceClose(&srv);
+    return rc;
+}
+
 Result hocmonGetConfigDebug(HocMonConfigDebug* out)
 {
     if (!out)

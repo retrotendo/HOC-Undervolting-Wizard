@@ -51,7 +51,7 @@ constexpr int HIGH_UV_MAX = 13;
 constexpr int LOW_VMIN_MIN_MV = 570;
 constexpr int VDDQ_MIN_MV = 400;
 constexpr int VDD2_MIN_UV = 912500;
-constexpr int LOW_VMIN_STEP_MV = 5;
+constexpr int LOW_VMIN_STEP_MV = 10;
 constexpr int VDDQ_STEP_MV = 10;
 constexpr u32 VMIN_FLOOR_TOLERANCE_UV = 5000U;
 constexpr int VDD2_STEP_UV = 12500;
@@ -199,8 +199,10 @@ HocMonConfigDebug g_configDebug{};
 Result g_configDebugRc = 0;
 bool g_rebootConfirm = false;
 bool g_autoPrepConfirm = false;
+u32 g_autoSetMask = Config_Prepare;
 std::string g_autoPrepError;
 bool g_bootPrompt = false;
+bool g_scanForLowUv = false;
 ConfigCheckState g_configCheck;
 Result g_rebootError = 0;
 Result g_hardwareReadRc = 0;
@@ -228,10 +230,10 @@ const char* stageName(Stage s) {
     switch (s) {
         case Stage::HardwareDetection: return "Hardware Detection";
         case Stage::Preparation: return "Preparation";
-        case Stage::LowUvQuick: return "CPU Low UV - 1 Min Search";
-        case Stage::LowUvValidateQuick: return "CPU Low UV - Legacy Quick Validation";
-        case Stage::LowUvLong: return "CPU Low UV - 1 Hour Validation";
-        case Stage::LowVminQuick: return "CPU Low VMIN - Quick Search @ 510";
+        case Stage::LowUvQuick: return "CPU Low UV - Boot Search";
+        case Stage::LowUvValidateQuick: return "CPU Low UV - Region Validation";
+        case Stage::LowUvLong: return "CPU Low UV - Voltage Scan";
+        case Stage::LowVminQuick: return "CPU Low VMIN - Boot Search";
         case Stage::LowVminLong: return "CPU Low VMIN - Floor Sweep @ 510";
         case Stage::LowVminSweep612: return "CPU Low VMIN - Floor Sweep @ 612";
         case Stage::LowVminSweep714: return "CPU Low VMIN - Floor Sweep @ 714";
@@ -239,7 +241,7 @@ const char* stageName(Stage s) {
         case Stage::LowVminSweep918: return "CPU Low VMIN - Floor Sweep @ 918";
         case Stage::LowVminValidate1020: return "CPU Low VMIN - Floor Sweep @ 1020";
         case Stage::LowVminFinalLong: return "CPU Low VMIN - Dynamic 1 Hour Validation";
-        case Stage::LowVminPlateauValidate: return "CPU Low VMIN - Plateau Validation";
+        case Stage::LowVminPlateauValidate: return "CPU Low VMIN - Region Validation";
         case Stage::VddqQuick: return "VDDQ - Quick Search";
         case Stage::VddqLong: return "VDDQ - 1 Hour Validation";
         case Stage::Vdd2Quick: return "VDD2 - Quick Search";
@@ -263,14 +265,9 @@ const char* stageName(Stage s) {
 
 bool testPlan(Stage s, stress::Kind& kind, int& seconds) {
     switch (s) {
-        case Stage::LowUvQuick:
-        case Stage::LowUvValidateQuick:
-        case Stage::LowVminQuick:
         case Stage::HighUvQuick:
             kind = stress::Kind::Cpu; seconds = 60; return true;
-        case Stage::LowUvLong:
         case Stage::LowVminFinalLong:
-        case Stage::LowVminPlateauValidate:
         case Stage::HighUvLong:
         case Stage::NormalMatrixValidate:
         case Stage::BoostMatrixValidate:
@@ -691,9 +688,9 @@ u32 defaultConfigMaskForStage(Stage st) {
     switch (st) {
         case Stage::Preparation: return Config_Prepare;
         case Stage::LowUvQuick:
-        case Stage::LowUvValidateQuick:
         case Stage::LowUvLong: return Config_LowUv;
-        case Stage::LowVminQuick: return Config_LowVmin;
+        case Stage::LowVminQuick:
+        case Stage::LowVminLong: return Config_LowVmin;
         case Stage::VddqQuick:
         case Stage::VddqLong: return Config_Vddq;
         case Stage::Vdd2Quick:
@@ -950,7 +947,42 @@ bool applyAutomaticPreparation() {
 
     resetPreparationBaselineState();
     g.pendingConfigMask = Config_Prepare;
-    g.rebootPending = true;
+    g.rebootPending = false;
+    saveState();
+    return true;
+}
+
+bool applyAutomaticCurrentSetting(u32 mask) {
+    g_autoPrepError.clear();
+    if (mask & Config_Prepare)
+        return applyAutomaticPreparation();
+
+    u32 hocMask = 0;
+    if (mask & Config_LowUv) hocMask |= 1U;
+    if (mask & Config_LowVmin) hocMask |= 2U;
+    if (!hocMask) {
+        g_autoPrepError = "Automatic setting is not available for this step yet.";
+        return false;
+    }
+
+    const Result rc = hocmonApplyCpuLow251(targetLowUv(), targetLowVmin(), hocMask);
+    if (R_FAILED(rc)) {
+        if (rc == 4)
+            g_autoPrepError = "Automatic setting currently supports Horizon OC 2.5.1 only.";
+        else {
+            char msg[96];
+            std::snprintf(msg, sizeof(msg), "Horizon OC Save KIP failed: 0x%08X", rc);
+            g_autoPrepError = msg;
+        }
+        return false;
+    }
+
+    svcSleepThread(150'000'000);
+    if (!verifyPersistentSettings(mask)) {
+        g_autoPrepError = "Readback did not match the requested value.";
+        return false;
+    }
+    g.pendingConfigMask = mask;
     saveState();
     return true;
 }
@@ -1138,9 +1170,9 @@ const char* compactStepName(Stage s) {
     switch (s) {
         case Stage::HardwareDetection: return "Hardware Detection";
         case Stage::Preparation: return "Preparation";
-        case Stage::LowUvQuick: return "CPU Low UV - 1 Min Search";
-        case Stage::LowUvValidateQuick: return "CPU Low UV - Legacy Quick Test";
-        case Stage::LowUvLong: return "CPU Low UV - Validate";
+        case Stage::LowUvQuick: return "CPU Low UV - Boot Search";
+        case Stage::LowUvValidateQuick: return "CPU Low UV - Region Test";
+        case Stage::LowUvLong: return "CPU Low UV - Voltage Scan";
         case Stage::LowVminQuick: return "CPU Low VMIN";
         case Stage::LowVminLong: return "CPU Low VMIN - Clock Check";
         case Stage::LowVminSweep612: return "CPU Low VMIN - Clock Check";
@@ -1219,7 +1251,7 @@ bool restoreTemporaryOverrides(const HocMonClocks& before) {
 
 void renderVminScanScreen() {
     consoleClear();
-    uiPrintf(1, "\x1b[36mBattery Wizard - AUTO VMIN SCAN\x1b[0m");
+    uiPrintf(1, "\x1b[36mBattery Wizard - CPU VOLTAGE SCAN\x1b[0m");
     uiPrintf(3, "----------------------------------------");
 
     if (!g_vminScanSuccess) {
@@ -1234,17 +1266,16 @@ void renderVminScanScreen() {
     }
 
     uiPrintf(5, "\x1b[32mAutomatic scan complete\x1b[0m");
-    uiPrintf(7, "Low VMIN : %d mV", g.lowVminGood);
-    uiPrintf(8, "Regions  : %d", g.vminValidateCount);
+    uiPrintf(7, g_scanForLowUv ? "Low UV : %d" : "Low VMIN : %d mV",
+             g_scanForLowUv ? g.lowUvGood : g.lowVminGood);
+    uiPrintf(8, "Different voltage regions : %d", g.vminValidateCount);
     int row = 10;
     for (int i = 0; i < g.vminValidateCount && i < 6; ++i)
         uiPrintf(row++, " %d. %s @ ~%d mV", i + 1, formatClock(g.vminValidateHz[i]).c_str(), g.vminValidateMv[i]);
     row++;
-    if (g.vminFloorHz)
-        uiPrintf(row++, "VMIN floor ends at %s", formatClock(g.vminFloorHz).c_str());
     uiPrintf(row++, "Previous overrides : %s", g_vminScanRestoreOk ? "\x1b[32mRESTORED\x1b[0m" : "\x1b[31mCHECK HOC\x1b[0m");
     row += 2;
-    uiPrintf(row++, "A : Continue to validation");
+    uiPrintf(row++, "A : Continue to automatic 1-minute tests");
     uiPrintf(row++, "B : Exit");
     consoleUpdate(nullptr);
 }
@@ -1294,14 +1325,75 @@ void renderHardwareDetection() {
 }
 
 
+enum class BootInference { Unknown, RequestedActive, SaferActive };
+
+BootInference inferBootState(int* activeValue = nullptr) {
+    HocMonConfig c{};
+    if (!readHocConfigIni(c)) return BootInference::Unknown;
+
+    if (g.stage == Stage::Preparation)
+        return configMatchesCurrent(Config_Prepare, c) ? BootInference::RequestedActive : BootInference::Unknown;
+
+    if (g.stage == Stage::LowUvQuick) {
+        if (activeValue) *activeValue = c.lowUv;
+        if (c.lowUv == g.lowUvTest) return BootInference::RequestedActive;
+        if (c.lowUv < g.lowUvTest && c.lowUv <= g.lowUvGood) return BootInference::SaferActive;
+        return BootInference::Unknown;
+    }
+    if (g.stage == Stage::LowVminQuick) {
+        if (activeValue) *activeValue = c.lowVminMv;
+        if (c.lowVminMv == g.lowVminTest) return BootInference::RequestedActive;
+        if (c.lowVminMv > g.lowVminTest && c.lowVminMv >= g.lowVminGood) return BootInference::SaferActive;
+        return BootInference::Unknown;
+    }
+
+    const u32 mask = g.pendingConfigMask ? g.pendingConfigMask : defaultConfigMaskForStage(g.stage);
+    return mask != Config_None && configMatchesCurrent(mask, c)
+        ? BootInference::RequestedActive : BootInference::Unknown;
+}
+
 void renderBootPrompt() {
     consoleClear();
     uiPrintf(1, "\x1b[36mBattery Wizard - BOOT CHECK\x1b[0m");
-    uiPrintf(3, "Did the console boot normally");
-    uiPrintf(4, "with the new Horizon OC setting?");
-    uiPrintf(7, "A : YES - continue");
-    uiPrintf(8, "X : NO  - setting did not boot");
-    uiPrintf(10, "B : Exit and decide later");
+    uiPrintf(3, "----------------------------------------");
+
+    int active = 0;
+    const BootInference state = inferBootState(&active);
+    int row = 5;
+    if (g.stage == Stage::LowUvQuick) {
+        uiPrintf(row++, "Requested Low UV : %d", g.lowUvTest);
+        uiPrintf(row++, "Active Low UV    : %d", active);
+    } else if (g.stage == Stage::LowVminQuick) {
+        uiPrintf(row++, "Requested VMIN   : %d mV", g.lowVminTest);
+        uiPrintf(row++, "Active VMIN      : %d mV", active);
+    }
+    row++;
+
+    if (state == BootInference::RequestedActive) {
+        uiPrintf(row++, "\x1b[32mRequested value is active.\x1b[0m");
+        uiPrintf(row++, "The console appears to have booted with it.");
+        row++;
+        uiPrintf(row++, "Only continue if normal CFW booted AND:");
+        uiPrintf(row++, " - no system freeze");
+        uiPrintf(row++, " - no crash");
+        uiPrintf(row++, " - no spontaneous reboot/system failure");
+        row += 2;
+        uiPrintf(row++, "A : Stable boot - continue");
+        uiPrintf(row++, "X : Not stable / crashed / froze");
+    } else if (state == BootInference::SaferActive) {
+        uiPrintf(row++, "\x1b[33mA safer previous value is active.\x1b[0m");
+        uiPrintf(row++, "The attempted value did not remain active.");
+        uiPrintf(row++, "That makes the active previous value the candidate.");
+        row += 2;
+        uiPrintf(row++, "A : Continue with this candidate");
+    } else {
+        uiPrintf(row++, "\x1b[31mCould not confirm the expected active value.\x1b[0m");
+        uiPrintf(row++, "Check Horizon OC / recovery state first.");
+        row += 2;
+        uiPrintf(row++, "A : Check again");
+        uiPrintf(row++, "X : Treat as unstable and recover");
+    }
+    uiPrintf(row + 1, "B : Exit and decide later");
     consoleUpdate(nullptr);
 }
 
@@ -1437,11 +1529,13 @@ void renderConfigPrompt() {
     }
     uiPrintf(row + 1, "Fix \x1b[31mWRONG\x1b[0m values in Horizon OC.");
     uiPrintf(row + 3, "A : Check again");
+    if (m & (Config_Prepare | Config_LowUv | Config_LowVmin))
+        uiPrintf(row + 4, "Y : Set required value(s) automatically");
     if (g.stage == Stage::Preparation) {
-        uiPrintf(row + 4, "X : Use current settings as baseline");
-        uiPrintf(row + 5, "B : Back");
+        uiPrintf(row + 5, "X : Use current settings as baseline");
+        uiPrintf(row + 6, "B : Back");
     } else {
-        uiPrintf(row + 4, "B : Back");
+        uiPrintf(row + 5, "B : Back");
     }
     consoleUpdate(nullptr);
 }
@@ -1449,20 +1543,22 @@ void renderConfigPrompt() {
 void renderAutoPrepConfirm() {
     consoleClear();
     uiPrintf(1, "\x1b[36mBattery Wizard\x1b[0m");
-    uiPrintf(2, "Step : Automatic Preparation");
+    uiPrintf(2, "Step : Automatic Setting");
     uiPrintf(3, "----------------------------------------");
-    uiPrintf(5, "Set all Preparation values automatically?");
+    if (g_autoSetMask & Config_Prepare)
+        uiPrintf(5, "Set all required Preparation values automatically?");
+    else if (g_autoSetMask & Config_LowUv)
+        uiPrintf(5, "Set CPU Low UV %d automatically?", targetLowUv());
+    else if (g_autoSetMask & Config_LowVmin)
+        uiPrintf(5, "Set CPU Low VMIN %d mV automatically?", targetLowVmin());
     uiPrintf(7, "Uses Horizon OC SetConfigValues + Save KIP.");
-    uiPrintf(8, "Only required Preparation values are changed.");
-    uiPrintf(10, "VDDQ start : %d mV", g.vddqStartMv);
-    uiPrintf(11, "Other Horizon OC values stay unchanged.");
-    uiPrintf(13, "Horizon OC 2.5.1 is required for auto setup.");
-    uiPrintf(15, "Values are read back before reboot.");
-    uiPrintf(16, "If verification succeeds, reboot is automatic.");
+    uiPrintf(8, "Unrelated Horizon OC values stay unchanged.");
+    uiPrintf(10, "Horizon OC 2.5.1 is required.");
+    uiPrintf(12, "The value is read back before reboot is offered.");
     if (!g_autoPrepError.empty())
-        uiPrintf(18, "\x1b[31m%s\x1b[0m", g_autoPrepError.c_str());
-    uiPrintf(21, "A : Confirm - set values and reboot");
-    uiPrintf(22, "B : Cancel");
+        uiPrintf(15, "\x1b[31m%s\x1b[0m", g_autoPrepError.c_str());
+    uiPrintf(20, "A : Confirm - set value(s)");
+    uiPrintf(21, "B : Cancel");
     consoleUpdate(nullptr);
 }
 
@@ -1473,31 +1569,24 @@ void renderRebootConfirm() {
     uiPrintf(3, "----------------------------------------");
     const u32 m = g_configCheck.mask;
     if (m & Config_Prepare)
-        uiPrintf(6, "\x1b[32mPreparation settings detected.\x1b[0m");
+        uiPrintf(5, "\x1b[32mPreparation values are saved and verified.\x1b[0m");
     else if (m & Config_LowUv)
-        uiPrintf(6, "\x1b[32mLow UV %d is set.\x1b[0m", targetLowUv());
+        uiPrintf(5, "\x1b[32mLow UV %d is saved and verified.\x1b[0m", targetLowUv());
     else if (m & Config_LowVmin)
-        uiPrintf(6, "\x1b[32mLow VMIN %d mV is set.\x1b[0m", targetLowVmin());
-    else if ((m & Config_Vddq) && (m & Config_Vdd2))
-        uiPrintf(6, "\x1b[32mVDDQ %d mV + VDD2 %s are set.\x1b[0m", targetVddqMv(), formatVdd2(targetVdd2Uv()).c_str());
-    else if (m & Config_Vddq)
-        uiPrintf(6, "\x1b[32mVDDQ %d mV is set.\x1b[0m", targetVddqMv());
-    else if (m & Config_Vdd2)
-        uiPrintf(6, "\x1b[32mVDD2 %s is set.\x1b[0m", formatVdd2(targetVdd2Uv()).c_str());
-    else if (m & Config_HighUv)
-        uiPrintf(6, "\x1b[32mHigh UV %d is set.\x1b[0m", targetHighUv());
-
-    uiPrintf(9, "\x1b[33mIf the console does NOT boot:\x1b[0m");
-    uiPrintf(10, "1. In Hekate start CFW No OC.");
-    if (m & Config_LowUv)
-        uiPrintf(11, "2. Restore previous Low UV (one step back).");
+        uiPrintf(5, "\x1b[32mLow VMIN %d mV is saved and verified.\x1b[0m", targetLowVmin());
     else
-        uiPrintf(11, "2. Restore the previous safe value.");
-    uiPrintf(12, "3. Restart normal CFW.");
-    uiPrintf(13, "4. Open the Wizard again.");
+        uiPrintf(5, "\x1b[32mRequested setting is saved and verified.\x1b[0m");
 
-    uiPrintf(16, "A : Restart console");
-    uiPrintf(17, "B : Back");
+    uiPrintf(7, "A reboot is required to apply the KIP value.");
+    uiPrintf(8, "After normal CFW boots, open this Wizard again.");
+    uiPrintf(10, "\x1b[33mIf normal CFW does not boot, freezes or crashes:\x1b[0m");
+    uiPrintf(11, "1. Boot Hekate.");
+    uiPrintf(12, "2. Start CFW No OC / without hoc.kip.");
+    uiPrintf(13, "3. Restore the previous safe value.");
+    uiPrintf(14, "4. Reboot normal CFW.");
+    uiPrintf(15, "5. Open this Wizard again.");
+    uiPrintf(18, "A : Reboot now");
+    uiPrintf(19, "B : Back");
     consoleUpdate(nullptr);
 }
 
@@ -1537,7 +1626,6 @@ bool isVminSweepStage(Stage st);
 void renderTestStage() {
     title();
 
-    // A persistent value that still needs to be set gets its own clean page.
     const u32 configMask = activeConfigMask();
     if (configMask != Config_None) {
         uiPrintf(5, "@ Horizon OC");
@@ -1549,9 +1637,56 @@ void renderTestStage() {
         if (configMask & Config_Vdd2) uiPrintf(setRow++, " - VDD2     : %s", formatVdd2(targetVdd2Uv()).c_str());
         if (configMask & Config_HighUv) uiPrintf(setRow++, " - High UV  : %d", targetHighUv());
         setRow += 2;
+        if (g.stage == Stage::LowUvQuick)
+            uiPrintf(setRow++, "Find the highest Low UV that can boot normally.");
+        else if (g.stage == Stage::LowVminQuick)
+            uiPrintf(setRow++, "Lower Low VMIN in 10 mV steps until boot fails.");
         uiPrintf(setRow++, "A : Check setting");
+        if (configMask & (Config_LowUv | Config_LowVmin))
+            uiPrintf(setRow++, "Y : Set value automatically");
         uiPrintf(setRow++, "+ : Known PASS / Skip");
         uiPrintf(setRow++, "B : Exit    - : Reset");
+        return;
+    }
+
+    int row = 5;
+    if (g.recoveryNeeded) {
+        uiPrintf(row++, "\x1b[33mPrevious safe value restored.\x1b[0m");
+        g.recoveryNeeded = false;
+        row++;
+    }
+
+    if (g.stage == Stage::LowUvLong || g.stage == Stage::LowVminLong) {
+        const bool lowUv = g.stage == Stage::LowUvLong;
+        uiPrintf(row++, "\x1b[32mBoot-limit candidate found.\x1b[0m");
+        uiPrintf(row++, lowUv ? "CPU Low UV   : %d" : "CPU Low VMIN : %d mV",
+                 lowUv ? g.lowUvGood : g.lowVminGood);
+        row++;
+        uiPrintf(row++, "Next the Wizard maps the CPU voltage curve at:");
+        uiPrintf(row++, "510 / 612 / 714 / 816 / 918 / 1020 MHz");
+        uiPrintf(row++, "and keeps only the highest frequency of each");
+        uiPrintf(row++, "different voltage region for stability testing.");
+        row += 2;
+        uiPrintf(row++, "A : Scan voltage regions automatically");
+        uiPrintf(row++, "B : Exit");
+        return;
+    }
+
+    if (g.stage == Stage::LowUvValidateQuick || g.stage == Stage::LowVminPlateauValidate) {
+        const bool lowUv = g.stage == Stage::LowUvValidateQuick;
+        uiPrintf(row++, lowUv ? "CPU Low UV candidate : %d" : "CPU Low VMIN candidate : %d mV",
+                 lowUv ? g.lowUvGood : g.lowVminGood);
+        uiPrintf(row++, "Voltage regions to test : %d", g.vminValidateCount);
+        row++;
+        for (int i = 0; i < g.vminValidateCount && i < 6; ++i)
+            uiPrintf(row++, " %d. %s @ ~%d mV", i + 1,
+                     formatClock(g.vminValidateHz[i]).c_str(), g.vminValidateMv[i]);
+        row++;
+        uiPrintf(row++, "The Wizard will set every override automatically");
+        uiPrintf(row++, "and run each listed CPU frequency for 1 minute.");
+        row += 2;
+        uiPrintf(row++, "A : Start automatic validation");
+        uiPrintf(row++, "B : Exit");
         return;
     }
 
@@ -1561,45 +1696,12 @@ void renderTestStage() {
     OverrideExpectation expected{};
     const bool hasOverrides = overridePlan(g.stage, expected);
 
-    int row = 5;
-    if (g.recoveryNeeded) {
-        uiPrintf(row++, "\x1b[33mRecovery value restored.\x1b[0m");
-        g.recoveryNeeded = false;
-        row++;
-    }
-
-    if (g.stage == Stage::LowVminPlateauValidate && g.vminValidateIndex < g.vminValidateCount) {
-        uiPrintf(row++, "Voltage region %d / %d", g.vminValidateIndex + 1, g.vminValidateCount);
-        uiPrintf(row++, "Measured : ~%d mV", g.vminValidateMv[g.vminValidateIndex]);
-        uiPrintf(row++, "Highest  : %s", formatClock(g.vminValidateHz[g.vminValidateIndex]).c_str());
-        row++;
-    }
-
-    if (isVminSweepStage(g.stage)) {
-        uiPrintf(row++, "Automatic CPU voltage scan");
-        row++;
-        uiPrintf(row++, "Low VMIN : %d mV", g.lowVminGood);
-        uiPrintf(row++, "CPU       : 510 -> 612 -> 714 ->");
-        uiPrintf(row++, "            816 -> 918 -> 1020 MHz");
-        uiPrintf(row++, "GPU       : 384 MHz (automatic)");
-        uiPrintf(row++, "RAM       : 1331.2 MHz (automatic)");
-        row++;
-        uiPrintf(row++, "The Wizard will set Temporary Overrides,");
-        uiPrintf(row++, "measure 3 samples at every CPU clock,");
-        uiPrintf(row++, "then restore your previous Overrides.");
-        row += 2;
-        uiPrintf(row++, "A : START SCAN");
-        uiPrintf(row++, "B : Exit");
-        return;
-    }
-
     if (hasOverrides) {
         uiPrintf(row++, "@ Horizon OC");
         row++;
         printOverrides(row, expected);
         row += 5;
     }
-
     if (hasTest) {
         uiPrintf(row++, "Test:");
         uiPrintf(row++, "%s - %s", seconds == 60 ? "1 min" : "1 hour", compactTestName(kind));
@@ -1814,8 +1916,7 @@ void handlePass() {
             g.stageReadyAfterBoot = false;
             break;
         case Stage::LowUvQuick:
-            // Every candidate must both boot and pass the 1-minute CPU test
-            // before it becomes the new last-known-good Low UV value.
+            // Boot-stable candidate confirmed by the post-reboot check.
             g.lowUvGood = g.lowUvTest;
             if (g.lowUvTest >= LOW_UV_MAX) {
                 g.stage = Stage::LowUvLong;
@@ -1974,6 +2075,7 @@ void handleFail(bool didNotBoot) {
             break;
         case Stage::LowUvValidateQuick:
             if (g.lowUvGood > 0) --g.lowUvGood;
+            g.stage = Stage::LowUvLong;
             g.recoveryNeeded = false;
             g.pendingConfigMask = Config_LowUv;
             break;
@@ -1997,22 +2099,13 @@ void handleFail(bool didNotBoot) {
         case Stage::LowVminFinalLong:
             restartVminSweep(false);
             break;
-        case Stage::LowVminPlateauValidate: {
-            const int mv = (g.vminValidateIndex < g.vminValidateCount) ? g.vminValidateMv[g.vminValidateIndex] : g.lowVminGood;
-            if (mv <= g.lowVminGood + 5) {
-                if (g.lowVminGood < STOCK_LOW_VMIN_MV) g.lowVminGood += LOW_VMIN_STEP_MV;
-                g.pendingConfigMask = Config_LowVmin;
-            } else if (g.lowUvGood > 0) {
-                --g.lowUvGood;
-                g.pendingConfigMask = Config_LowUv;
-            } else {
-                if (g.lowVminGood < STOCK_LOW_VMIN_MV) g.lowVminGood += LOW_VMIN_STEP_MV;
-                g.pendingConfigMask = Config_LowVmin;
-            }
-            restartVminSweep(false);
-            // restartVminSweep clears state but intentionally keeps pendingConfigMask.
+        case Stage::LowVminPlateauValidate:
+            if (g.lowVminGood < STOCK_LOW_VMIN_MV)
+                g.lowVminGood = std::min(STOCK_LOW_VMIN_MV, g.lowVminGood + LOW_VMIN_STEP_MV);
+            g.stage = Stage::LowVminLong;
+            g.pendingConfigMask = Config_LowVmin;
+            clearVminSweepData();
             break;
-        }
         case Stage::VddqQuick:
             g.stage = Stage::VddqLong;
             g.recoveryNeeded = didNotBoot;
@@ -2086,24 +2179,42 @@ void handleFail(bool didNotBoot) {
 }
 
 
-void runAutomaticVminScan() {
-    static const Stage stages[6] = {
-        Stage::LowVminLong,
-        Stage::LowVminSweep612,
-        Stage::LowVminSweep714,
-        Stage::LowVminValidate816,
-        Stage::LowVminSweep918,
-        Stage::LowVminValidate1020,
-    };
-    static const u32 cpuHz[6] = {
-        CLOCK_CPU_VMIN_510_HZ,
-        CLOCK_CPU_LOW_HZ,
-        CLOCK_CPU_VMIN_714_HZ,
-        CLOCK_CPU_VMIN_MID_HZ,
-        CLOCK_CPU_VMIN_918_HZ,
-        CLOCK_CPU_NORMAL_HZ,
-    };
+bool sampleCpuVoltageAt(u32 cpuHz, int index, int total, int& outMv) {
+    u32 samples[3] = {};
+    int count = 0;
+    for (int s = 0; s < 3; ++s) {
+        consoleClear();
+        uiPrintf(1, "\x1b[36mBattery Wizard - CPU VOLTAGE SCAN\x1b[0m");
+        uiPrintf(3, "----------------------------------------");
+        uiPrintf(5, "Frequency : %d / %d", index + 1, total);
+        uiPrintf(7, "CPU       : %s", formatClock(cpuHz).c_str());
+        uiPrintf(8, "GPU / RAM : 384 / 1331.2 MHz");
+        uiPrintf(10, "Reading CPU voltage sample %d / 3...", s + 1);
+        consoleUpdate(nullptr);
+        svcSleepThread(700'000'000);
 
+        HocMonClocks cur{};
+        if (R_SUCCEEDED(hocmonGetClocks(&cur)) &&
+            clockMatches(cur.overrideHz[0], cpuHz) &&
+            clockMatches(cur.overrideHz[1], CLOCK_GPU_NORMAL_HZ) &&
+            clockMatches(cur.overrideHz[2], CLOCK_RAM_NORMAL_HZ) &&
+            clockMatches(cur.targetHz[0], cpuHz) && cur.cpuVoltageUv != 0)
+            samples[count++] = cur.cpuVoltageUv;
+    }
+    if (count != 3) return false;
+    if (samples[0] > samples[1]) std::swap(samples[0], samples[1]);
+    if (samples[1] > samples[2]) std::swap(samples[1], samples[2]);
+    if (samples[0] > samples[1]) std::swap(samples[0], samples[1]);
+    outMv = (int)(((samples[1] + 2500U) / 5000U) * 5U);
+    return true;
+}
+
+void runAutomaticVoltageScan(bool forLowUv) {
+    static const u32 cpuHz[6] = {
+        CLOCK_CPU_VMIN_510_HZ, CLOCK_CPU_LOW_HZ, CLOCK_CPU_VMIN_714_HZ,
+        CLOCK_CPU_VMIN_MID_HZ, CLOCK_CPU_VMIN_918_HZ, CLOCK_CPU_NORMAL_HZ,
+    };
+    g_scanForLowUv = forLowUv;
     g_vminScanScreen = false;
     g_vminScanSuccess = false;
     g_vminScanRestoreOk = true;
@@ -2120,12 +2231,7 @@ void runAutomaticVminScan() {
     }
 
     clearVminSweepData();
-    g.stage = Stage::LowVminLong;
-    saveState();
-
-    // Move CPU to the safe low scan clock before changing the other modules.
-    rc = hocmonSetOverride(HocMonModule_CPU, cpuHz[0]);
-    if (R_SUCCEEDED(rc)) rc = hocmonSetOverride(HocMonModule_GPU, CLOCK_GPU_NORMAL_HZ);
+    rc = hocmonSetOverride(HocMonModule_GPU, CLOCK_GPU_NORMAL_HZ);
     if (R_SUCCEEDED(rc)) rc = hocmonSetOverride(HocMonModule_MEM, CLOCK_RAM_NORMAL_HZ);
     if (R_FAILED(rc)) {
         g_vminScanErrorRc = rc;
@@ -2136,78 +2242,165 @@ void runAutomaticVminScan() {
     }
 
     for (int i = 0; i < 6; ++i) {
-        consoleClear();
-        uiPrintf(1, "\x1b[36mBattery Wizard - AUTO VMIN SCAN\x1b[0m");
-        uiPrintf(3, "----------------------------------------");
-        uiPrintf(5, "Frequency : %d / 6", i + 1);
-        uiPrintf(7, "Setting CPU override : %s", formatClock(cpuHz[i]).c_str());
-        uiPrintf(8, "GPU / RAM            : 384 / 1331.2 MHz");
-        uiPrintf(10, "Please do not open Horizon OC during scan.");
-        consoleUpdate(nullptr);
-
-        if (i > 0) {
-            rc = hocmonSetOverride(HocMonModule_CPU, cpuHz[i]);
-            if (R_FAILED(rc)) {
-                g_vminScanErrorRc = rc;
-                g_vminScanErrorText = "Could not switch the CPU Temporary Override.";
-                break;
-            }
-        }
-
-        // Let HOC/governor settle before taking the first context sample.
-        svcSleepThread(700'000'000);
-
-        bool measured = sampleVminVoltage(stages[i], i, 6);
-        if (!measured) {
-            // One automatic retry covers a late governor/context update.
-            svcSleepThread(500'000'000);
-            measured = sampleVminVoltage(stages[i], i, 6);
-        }
-        if (!measured) {
-            g_vminScanErrorRc = g_overrideCheck.readOk ? 0 : g_overrideCheck.rc;
-            if (!g_overrideCheck.cpuOk || !g_overrideCheck.gpuOk || !g_overrideCheck.ramOk)
-                g_vminScanErrorText = "Requested Temporary Override was not applied.";
-            else if (!g_overrideCheck.cpuAppliedOk)
-                g_vminScanErrorText = "CPU clock did not settle on the requested value.";
-            else
-                g_vminScanErrorText = "Could not obtain 3 valid CPU-voltage samples.";
+        rc = hocmonSetOverride(HocMonModule_CPU, cpuHz[i]);
+        if (R_FAILED(rc)) {
+            g_vminScanErrorRc = rc;
+            g_vminScanErrorText = "Could not switch the CPU Temporary Override.";
             break;
         }
-
-        recordVminObservation(stages[i]);
-
-        consoleClear();
-        uiPrintf(1, "\x1b[36mBattery Wizard - AUTO VMIN SCAN\x1b[0m");
-        uiPrintf(3, "----------------------------------------");
-        uiPrintf(5, "Frequency : %d / 6", i + 1);
-        uiPrintf(7, "\x1b[32mMeasured\x1b[0m : %s @ ~%d mV", formatClock(cpuHz[i]).c_str(), g.lastProbeMv);
-        consoleUpdate(nullptr);
-        svcSleepThread(350'000'000);
+        svcSleepThread(500'000'000);
+        int mv = 0;
+        if (!sampleCpuVoltageAt(cpuHz[i], i, 6, mv)) {
+            g_vminScanErrorText = "Could not obtain three valid voltage samples.";
+            break;
+        }
+        g.vminObsMv[i] = mv;
+        g.vminObsMask |= (1u << i);
     }
 
     g_vminScanRestoreOk = restoreTemporaryOverrides(before);
-
-    if (!g_vminScanErrorText.empty() || g_vminScanErrorRc) {
-        g.stage = Stage::LowVminLong;
+    if (!g_vminScanErrorText.empty() || g.vminObsMask != 0x3FU) {
         saveState();
         g_vminScanScreen = true;
         return;
     }
 
     buildVminPlateaus();
-    if (g.vminValidateCount <= 0) {
-        g_vminScanErrorText = "No valid CPU voltage regions were detected.";
-        g.stage = Stage::LowVminLong;
-        saveState();
-        g_vminScanScreen = true;
-        return;
-    }
-
-    g.stage = Stage::LowVminPlateauValidate;
+    g.stage = forLowUv ? Stage::LowUvValidateQuick : Stage::LowVminPlateauValidate;
     g.stageReadyAfterBoot = true;
+    g.pendingConfigMask = Config_None;
     saveState();
     g_vminScanSuccess = true;
     g_vminScanScreen = true;
+}
+
+void runAutomaticLowUvScan() {
+    runAutomaticVoltageScan(true);
+}
+
+void runAutomaticRegionValidation(bool forLowUv) {
+    if (g.vminValidateCount <= 0) {
+        g_resultAction = "No voltage regions were available. Run the voltage scan again.";
+        g_lastKind = stress::Kind::Cpu;
+        g_lastResult = stress::Result{};
+        g_resultScreen = true;
+        return;
+    }
+
+    HocMonClocks before{};
+    Result rc = hocmonGetClocks(&before);
+    if (R_FAILED(rc)) {
+        g_resultAction = "Could not read current HOC overrides.";
+        g_lastKind = stress::Kind::Cpu;
+        g_lastResult = stress::Result{};
+        g_resultScreen = true;
+        return;
+    }
+
+    bool failed = false;
+    for (int i = 0; i < g.vminValidateCount; ++i) {
+        const u32 hz = g.vminValidateHz[i];
+        consoleClear();
+        uiPrintf(1, "\x1b[36mBattery Wizard - AUTO CPU VALIDATION\x1b[0m");
+        uiPrintf(3, "----------------------------------------");
+        uiPrintf(5, "Region %d / %d", i + 1, g.vminValidateCount);
+        uiPrintf(7, "CPU : %s @ ~%d mV", formatClock(hz).c_str(), g.vminValidateMv[i]);
+        uiPrintf(8, "GPU : 384 MHz");
+        uiPrintf(9, "RAM : 1331.2 MHz");
+        uiPrintf(11, "Running built-in CPU test for 1 minute...");
+        consoleUpdate(nullptr);
+
+        rc = hocmonSetOverride(HocMonModule_CPU, hz);
+        if (R_SUCCEEDED(rc)) rc = hocmonSetOverride(HocMonModule_GPU, CLOCK_GPU_NORMAL_HZ);
+        if (R_SUCCEEDED(rc)) rc = hocmonSetOverride(HocMonModule_MEM, CLOCK_RAM_NORMAL_HZ);
+        if (R_FAILED(rc)) {
+            g_resultAction = "Automatic override setup failed. No candidate change was recorded.";
+            failed = true;
+            break;
+        }
+        svcSleepThread(500'000'000);
+
+        HocMonClocks cur{};
+        rc = hocmonGetClocks(&cur);
+        if (R_FAILED(rc) || !clockMatches(cur.overrideHz[0], hz) ||
+            !clockMatches(cur.overrideHz[1], CLOCK_GPU_NORMAL_HZ) ||
+            !clockMatches(cur.overrideHz[2], CLOCK_RAM_NORMAL_HZ)) {
+            g_resultAction = "Automatic override verification failed. No candidate change was recorded.";
+            failed = true;
+            break;
+        }
+
+        g.testRunning = true;
+        g.testKind = static_cast<int>(stress::Kind::Cpu);
+        g.testDurationSec = 60;
+        g.testStage = static_cast<int>(g.stage);
+        saveState();
+        g_lastKind = stress::Kind::Cpu;
+        g_lastResult = stress::run(stress::Kind::Cpu, 60);
+        g.testRunning = false;
+        g.testKind = g.testDurationSec = g.testStage = 0;
+        saveState();
+
+        if (g_lastResult.outcome != stress::Outcome::Pass) {
+            failed = true;
+            if (g_lastResult.outcome == stress::Outcome::Fail) {
+                if (forLowUv) {
+                    if (g.lowUvGood > 0) --g.lowUvGood;
+                    g.stage = Stage::LowUvLong;
+                    g.pendingConfigMask = Config_LowUv;
+                    g_resultAction = "CPU validation failed. Low UV was reduced by one level; apply/reboot, then the Wizard will rescan.";
+                } else {
+                    if (g.lowVminGood < STOCK_LOW_VMIN_MV)
+                        g.lowVminGood = std::min(STOCK_LOW_VMIN_MV, g.lowVminGood + LOW_VMIN_STEP_MV);
+                    g.stage = Stage::LowVminLong;
+                    g.pendingConfigMask = Config_LowVmin;
+                    g_resultAction = "CPU validation failed. Low VMIN was raised by 10 mV; apply/reboot, then the Wizard will rescan.";
+                }
+                g.stageReadyAfterBoot = false;
+                clearVminSweepData();
+                saveState();
+            } else {
+                g_resultAction = "Validation was cancelled or the test engine stopped. The tuning candidate was not changed.";
+            }
+            break;
+        }
+    }
+
+    const bool restored = restoreTemporaryOverrides(before);
+    if (!failed) {
+        g_lastResult.outcome = stress::Outcome::Pass;
+        if (forLowUv) {
+            clearVminSweepData();
+            if (g.lowVminGood <= LOW_VMIN_MIN_MV) {
+                g.stage = Stage::LowVminLong;
+                g.stageReadyAfterBoot = true;
+            } else {
+                g.stage = Stage::LowVminQuick;
+                g.lowVminTest = std::max(LOW_VMIN_MIN_MV, g.lowVminGood - LOW_VMIN_STEP_MV);
+                g.stageReadyAfterBoot = false;
+            }
+            g_resultAction = "All CPU voltage regions passed. CPU Low UV is confirmed; continuing to Low VMIN boot search.";
+        } else {
+            clearVminSweepData();
+            if (g.vddqGood <= VDDQ_MIN_MV) {
+                g.stage = Stage::VddqLong;
+                g.stageReadyAfterBoot = true;
+            } else {
+                g.stage = Stage::VddqQuick;
+                g.vddqTest = g.vddqGood - VDDQ_STEP_MV;
+                g.stageReadyAfterBoot = false;
+            }
+            g_resultAction = "All CPU voltage regions passed. CPU Low VMIN is confirmed; continuing to RAM tuning.";
+        }
+        g.pendingConfigMask = Config_None;
+        saveState();
+    }
+    if (!restored) g_resultAction += " WARNING: previous Temporary Overrides could not be fully restored.";
+    g_resultScreen = true;
+}
+
+void runAutomaticVminScan() {
+    runAutomaticVoltageScan(false);
 }
 
 
@@ -2332,42 +2525,43 @@ int main(int argc, char** argv) {
 
         if (g_bootPrompt) {
             if (k & HidNpadButton_A) {
-                g.rebootPending = false;
-                g_bootPrompt = false;
-                g.pendingConfigMask = Config_None;
-                if (g.stage == Stage::Preparation) {
-                    if (g.lowUvGood >= LOW_UV_MAX) {
+                int active = 0;
+                const BootInference state = inferBootState(&active);
+                if (state == BootInference::RequestedActive) {
+                    g.rebootPending = false;
+                    g_bootPrompt = false;
+                    g.pendingConfigMask = Config_None;
+                    if (g.stage == Stage::Preparation) {
+                        g.stage = Stage::LowUvQuick;
+                        g.lowUvTest = std::min(LOW_UV_MAX, g.lowUvGood + 1);
+                        g.stageReadyAfterBoot = false;
+                    } else if (g.stage == Stage::LowUvQuick || g.stage == Stage::LowVminQuick) {
+                        handlePass();
+                    } else {
+                        g.stageReadyAfterBoot = true;
+                        saveState();
+                    }
+                } else if (state == BootInference::SaferActive) {
+                    g.rebootPending = false;
+                    g_bootPrompt = false;
+                    g.pendingConfigMask = Config_None;
+                    if (g.stage == Stage::LowUvQuick) {
+                        g.lowUvGood = std::max(0, active);
                         g.stage = Stage::LowUvLong;
                         g.stageReadyAfterBoot = true;
-                    } else {
-                        g.stage = Stage::LowUvQuick;
-                        g.lowUvTest = g.lowUvGood + 1;
-                        g.stageReadyAfterBoot = false;
+                    } else if (g.stage == Stage::LowVminQuick) {
+                        g.lowVminGood = active;
+                        g.stage = Stage::LowVminLong;
+                        g.stageReadyAfterBoot = true;
                     }
-                } else if (g.stage == Stage::LowUvQuick) {
-                    // Boot success alone is not a PASS. Stay on the same
-                    // candidate and require the 1-minute CPU test next.
-                    g.stageReadyAfterBoot = true;
-                } else {
-                    g.stageReadyAfterBoot = true;
+                    clearVminSweepData();
+                    saveState();
                 }
-                saveState();
                 redraw = true;
             } else if (k & HidNpadButton_X) {
-                const bool lowUvCandidateNoBoot = (g.stage == Stage::LowUvQuick);
                 g.rebootPending = false;
                 g_bootPrompt = false;
                 handleFail(true);
-
-                // After a Low UV no-boot, the documented recovery path is:
-                // Hekate CFW No OC -> restore previous Low UV -> normal CFW ->
-                // reopen Wizard. If that last-known-good value is already active,
-                // do not demand another redundant reboot before the 1-hour test.
-                if (lowUvCandidateNoBoot && verifyPersistentSettings(Config_LowUv)) {
-                    g.pendingConfigMask = Config_None;
-                    g.stageReadyAfterBoot = true;
-                    saveState();
-                }
                 redraw = true;
             } else if (k & HidNpadButton_B) {
                 break;
@@ -2383,14 +2577,11 @@ int main(int argc, char** argv) {
                     redraw = true;
                 } else {
                     g_vminScanScreen = false;
-                    runAutomaticVminScan();
+                    if (g_scanForLowUv) runAutomaticLowUvScan();
+                    else runAutomaticVminScan();
                     redraw = true;
                 }
             } else if (k & HidNpadButton_B) {
-                if (g_vminScanSuccess) {
-                    saveState();
-                    break;
-                }
                 g_vminScanScreen = false;
                 redraw = true;
             }
@@ -2439,7 +2630,12 @@ int main(int argc, char** argv) {
         }
 
         if (g_configPrompt) {
-            if ((k & HidNpadButton_X) && g.stage == Stage::Preparation) {
+            if ((k & HidNpadButton_Y) && (g_configCheck.mask & (Config_Prepare | Config_LowUv | Config_LowVmin))) {
+                g_autoSetMask = g_configCheck.mask;
+                g_autoPrepError.clear();
+                g_autoPrepConfirm = true;
+                redraw = true;
+            } else if ((k & HidNpadButton_X) && g.stage == Stage::Preparation) {
                 if (captureCurrentSettingsBaseline()) {
                     g_configPrompt = false;
                     continueFromPreparationBaseline();
@@ -2463,31 +2659,11 @@ int main(int argc, char** argv) {
         if (g_autoPrepConfirm) {
             if (k & HidNpadButton_A) {
                 g_autoPrepError.clear();
-                if (applyAutomaticPreparation()) {
+                if (applyAutomaticCurrentSetting(g_autoSetMask)) {
                     g_autoPrepConfirm = false;
-                    consoleClear();
-                    uiPrintf(6, "\x1b[32mPreparation values written + verified.\x1b[0m");
-                    uiPrintf(8, "Restarting console...");
-                    consoleUpdate(nullptr);
-                    svcSleepThread(400'000'000);
-
-                    g_rebootError = appletRequestToReboot();
-                    if (R_FAILED(g_rebootError)) {
-                        saveState();
-                        consoleClear();
-                        uiPrintf(5, "\x1b[31mAutomatic restart failed.\x1b[0m");
-                        uiPrintf(7, "Result : 0x%08X", g_rebootError);
-                        uiPrintf(9, "Preparation values ARE already saved.");
-                        uiPrintf(10, "Restart CFW manually, then reopen Wizard.");
-                        uiPrintf(12, "B : Exit");
-                        consoleUpdate(nullptr);
-                        while (appletMainLoop()) {
-                            padUpdate(&pad);
-                            if (padGetButtonsDown(&pad) & HidNpadButton_B) break;
-                            svcSleepThread(20'000'000);
-                        }
-                        break;
-                    }
+                    g_configPrompt = false;
+                    g_configCheck.mask = g_autoSetMask;
+                    g_rebootConfirm = true;
                 }
                 redraw = true;
             } else if (k & HidNpadButton_B) {
@@ -2587,6 +2763,7 @@ int main(int argc, char** argv) {
                 redraw = true;
             }
         } else if (g.stage == Stage::Preparation && (k & HidNpadButton_Y)) {
+            g_autoSetMask = Config_Prepare;
             g_autoPrepError.clear();
             g_autoPrepConfirm = true;
             redraw = true;
@@ -2594,6 +2771,14 @@ int main(int argc, char** argv) {
             if (captureCurrentSettingsBaseline()) continueFromPreparationBaseline();
             else g_configPrompt = true;
             redraw = true;
+        } else if ((k & HidNpadButton_Y) && g.stage != Stage::Preparation) {
+            const u32 cfgMask = activeConfigMask();
+            if (cfgMask & (Config_LowUv | Config_LowVmin)) {
+                g_autoSetMask = cfgMask;
+                g_autoPrepError.clear();
+                g_autoPrepConfirm = true;
+                redraw = true;
+            }
         } else if ((k & HidNpadButton_Plus) && g.stage != Stage::Preparation) {
             if (isVminSweepStage(g.stage)) {
                 runAutomaticVminScan();
@@ -2628,8 +2813,14 @@ int main(int argc, char** argv) {
             if (cfgMask != Config_None) {
                 if (verifyPersistentSettings(cfgMask)) g_rebootConfirm = true;
                 else g_configPrompt = true;
-            } else if (isVminSweepStage(g.stage)) {
+            } else if (g.stage == Stage::LowUvLong) {
+                runAutomaticLowUvScan();
+            } else if (g.stage == Stage::LowUvValidateQuick) {
+                runAutomaticRegionValidation(true);
+            } else if (g.stage == Stage::LowVminLong || isVminSweepStage(g.stage)) {
                 runAutomaticVminScan();
+            } else if (g.stage == Stage::LowVminPlateauValidate) {
+                runAutomaticRegionValidation(false);
             } else {
                 stress::Kind kind;
                 int seconds = 0;

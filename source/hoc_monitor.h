@@ -93,6 +93,13 @@ Result hocmonGetConfig(HocMonConfig* out);
  */
 Result hocmonApplyPreparation251(const HocMonConfig* desired);
 
+/*
+ * Horizon OC 2.5.1 only: update CPU Low UV and/or Low VMIN through the
+ * same SetConfigValues + SetKipData path used by Horizon OC itself.
+ * fieldsMask bit0 = Low UV, bit1 = Low VMIN.
+ */
+Result hocmonApplyCpuLow251(int lowUv, int lowVminMv, u32 fieldsMask);
+
 /* Raw hoc:clk config-list diagnostics. Read-only; used by debug builds. */
 Result hocmonGetConfigDebug(HocMonConfigDebug* out);
 

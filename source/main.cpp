@@ -1233,14 +1233,13 @@ void printOverrides(int row, const OverrideExpectation& e) {
 }
 
 void footerTest(int row) {
-    uiPrintf(row,     "Keys:");
-    uiPrintf(row + 1, "A : Start Test");
-    uiPrintf(row + 2, "    If the test crashes, reboot and");
-    uiPrintf(row + 3, "    open the Wizard again.");
-    uiPrintf(row + 4, "+ : Known PASS / Skip step");
-    uiPrintf(row + 5, "X : Known FAIL / Skip");
-    uiPrintf(row + 6, "B : Exit");
-    printResetHint(row + 6);
+    uiPrintf(row,     "A : Start automatic stability test");
+    uiPrintf(row + 1, "    If the test crashes, reboot and");
+    uiPrintf(row + 2, "    open the Wizard again.");
+    uiPrintf(row + 3, "+ : Known PASS / Skip step");
+    uiPrintf(row + 4, "X : Known FAIL / Skip step");
+    uiPrintf(row + 5, "B : Exit");
+    printResetHint(row + 5);
 }
 
 
@@ -1256,6 +1255,46 @@ bool restoreTemporaryOverrides(const HocMonClocks& before) {
     }
     svcSleepThread(300'000'000);
     return ok;
+}
+
+bool setupAutomaticTestOverrides(Stage st, HocMonClocks& before) {
+    g_overrideCheck = OverrideCheckState{};
+    if (!overridePlan(st, g_overrideCheck.expected)) return true;
+
+    g_overrideCheck.rc = hocmonGetClocks(&before);
+    if (R_FAILED(g_overrideCheck.rc)) {
+        g_overrideCheck.readOk = false;
+        return false;
+    }
+
+    // Set the supporting clocks first and CPU last. The user does not need to
+    // manage these Temporary Overrides manually.
+    Result rc = hocmonSetOverride(HocMonModule_GPU, g_overrideCheck.expected.gpuHz);
+    if (R_SUCCEEDED(rc)) rc = hocmonSetOverride(HocMonModule_MEM, g_overrideCheck.expected.ramHz);
+    if (R_SUCCEEDED(rc)) rc = hocmonSetOverride(HocMonModule_CPU, g_overrideCheck.expected.cpuHz);
+    if (R_FAILED(rc)) {
+        g_overrideCheck.rc = rc;
+        restoreTemporaryOverrides(before);
+        return false;
+    }
+
+    svcSleepThread(400'000'000);
+    g_overrideCheck.rc = hocmonGetClocks(&g_overrideCheck.current);
+    if (R_FAILED(g_overrideCheck.rc)) {
+        g_overrideCheck.readOk = false;
+        restoreTemporaryOverrides(before);
+        return false;
+    }
+
+    g_overrideCheck.readOk = true;
+    g_overrideCheck.cpuOk = clockMatches(g_overrideCheck.current.overrideHz[0], g_overrideCheck.expected.cpuHz);
+    g_overrideCheck.gpuOk = clockMatches(g_overrideCheck.current.overrideHz[1], g_overrideCheck.expected.gpuHz);
+    g_overrideCheck.ramOk = clockMatches(g_overrideCheck.current.overrideHz[2], g_overrideCheck.expected.ramHz);
+    if (!(g_overrideCheck.cpuOk && g_overrideCheck.gpuOk && g_overrideCheck.ramOk)) {
+        restoreTemporaryOverrides(before);
+        return false;
+    }
+    return true;
 }
 
 void renderVminScanScreen() {
@@ -1650,6 +1689,83 @@ void renderPreparation() {
 
 bool isVminSweepStage(Stage st);
 
+void renderValidationObjective(int& row) {
+    HocMonConfig current{};
+    bool haveCurrent = R_SUCCEEDED(hocmonGetConfig251(&current));
+    if (!haveCurrent) haveCurrent = readHocConfigIni(current);
+
+    uiPrintf(row++, "Objective:");
+    switch (g.stage) {
+        case Stage::VddqQuick:
+        case Stage::VddqLong: {
+            const int value = g.stage == Stage::VddqQuick ? g.vddqTest : g.vddqGood;
+            uiPrintf(row++, "VDDQ %d mV will be tested now.", value);
+            uiPrintf(row++, "Current VDDQ : %s", haveCurrent ? formatMv((int)(current.vddqUv / 1000U)).c_str() : "unavailable");
+            break;
+        }
+        case Stage::Vdd2Quick:
+        case Stage::Vdd2Long: {
+            const int value = g.stage == Stage::Vdd2Quick ? g.vdd2TestUv : g.vdd2GoodUv;
+            uiPrintf(row++, "VDD2 %s will be tested now.", formatVdd2(value).c_str());
+            uiPrintf(row++, "Current VDD2 : %s", haveCurrent ? formatVdd2((int)current.vdd2Uv).c_str() : "unavailable");
+            break;
+        }
+        case Stage::HighUvQuick:
+        case Stage::HighUvLong: {
+            const int value = g.stage == Stage::HighUvQuick ? g.highUvTest : g.highUvGood;
+            uiPrintf(row++, "High UV %d will be tested now.", value);
+            if (haveCurrent) uiPrintf(row++, "Current High UV : %d", current.highUv);
+            else uiPrintf(row++, "Current High UV : unavailable");
+            break;
+        }
+        case Stage::RamBoostValidate:
+            uiPrintf(row++, "Tuned RAM voltages will be tested now.");
+            uiPrintf(row++, "Boost operating state validation.");
+            if (haveCurrent) {
+                uiPrintf(row++, "Current VDDQ : %s", formatMv((int)(current.vddqUv / 1000U)).c_str());
+                uiPrintf(row++, "Current VDD2 : %s", formatVdd2((int)current.vdd2Uv).c_str());
+            }
+            break;
+        case Stage::Ram1331Validate:
+            uiPrintf(row++, "Tuned RAM voltages will be tested now.");
+            uiPrintf(row++, "Handheld operating state validation.");
+            if (haveCurrent) {
+                uiPrintf(row++, "Current VDDQ : %s", formatMv((int)(current.vddqUv / 1000U)).c_str());
+                uiPrintf(row++, "Current VDD2 : %s", formatVdd2((int)current.vdd2Uv).c_str());
+            }
+            break;
+        case Stage::BoostCpuRamValidate:
+            uiPrintf(row++, "CPU + RAM Boost stability will be tested now.");
+            break;
+        case Stage::NormalMatrixValidate:
+            uiPrintf(row++, "Final handheld CPU stability will be tested now.");
+            break;
+        case Stage::NormalMemValidate:
+            uiPrintf(row++, "Final handheld RAM stability will be tested now.");
+            break;
+        case Stage::NormalGpuValidate:
+            uiPrintf(row++, "Final handheld GPU stability will be tested now.");
+            break;
+        case Stage::BoostMatrixValidate:
+            uiPrintf(row++, "Final Boost CPU stability will be tested now.");
+            break;
+        case Stage::BoostMemValidate:
+            uiPrintf(row++, "Final Boost RAM stability will be tested now.");
+            break;
+        case Stage::BoostCpuMemValidate:
+            uiPrintf(row++, "Final Boost CPU + RAM stability will be tested now.");
+            break;
+        case Stage::LowVminFinalLong:
+            uiPrintf(row++, "Low VMIN stability will be tested now.");
+            uiPrintf(row++, "Current Low VMIN : %s", haveCurrent ? formatMv(current.lowVminMv).c_str() : "unavailable");
+            break;
+        default:
+            uiPrintf(row++, "This stability step will be tested now.");
+            break;
+    }
+    row++;
+}
+
 void renderTestStage() {
     title();
 
@@ -1699,11 +1815,7 @@ void renderTestStage() {
     }
 
     int row = 5;
-    if (g.recoveryNeeded) {
-        uiPrintf(row++, "\x1b[33mPrevious safe value restored.\x1b[0m");
-        g.recoveryNeeded = false;
-        row++;
-    }
+    if (g.recoveryNeeded) g.recoveryNeeded = false;
 
     if (g.stage == Stage::LowUvLong || g.stage == Stage::LowVminLong) {
         const bool lowUv = g.stage == Stage::LowUvLong;
@@ -1747,16 +1859,8 @@ void renderTestStage() {
     stress::Kind kind;
     int seconds = 0;
     const bool hasTest = testPlan(g.stage, kind, seconds);
-    OverrideExpectation expected{};
-    const bool hasOverrides = overridePlan(g.stage, expected);
-
-    if (hasOverrides) {
-        uiPrintf(row++, "@ Horizon OC");
-        row++;
-        printOverrides(row, expected);
-        row += 5;
-    }
     if (hasTest) {
+        renderValidationObjective(row);
         uiPrintf(row++, "Test:");
         uiPrintf(row++, "%s - %s", seconds == 60 ? "1 min" : "1 hour", compactTestName(kind));
         footerTest(row + 1);
@@ -1775,9 +1879,10 @@ void renderRealWorld() {
     uiPrintf(13, "Home + Sleep/Wake");
     uiPrintf(15, "Keys:");
     uiPrintf(16, "A : PASS");
-    uiPrintf(17, "X : FAIL");
-    uiPrintf(18, "B : Exit");
-    printResetHint(18);
+    uiPrintf(17, "+ : Known PASS / Skip step");
+    uiPrintf(18, "X : FAIL");
+    uiPrintf(19, "B : Exit");
+    printResetHint(19);
 }
 
 void renderComplete() {
@@ -1812,50 +1917,30 @@ void renderInterruptedPrompt() {
 
 void renderOverridePrompt() {
     consoleClear();
-    uiPrintf(1, "\x1b[31mBattery Wizard - TEST BLOCKED\x1b[0m");
+    uiPrintf(1, "\x1b[31mBattery Wizard - TEST SETUP FAILED\x1b[0m");
     uiPrintf(2, "Step : %s", compactStepName(g.stage));
     uiPrintf(3, "----------------------------------------");
 
+    uiPrintf(5, "Could not automatically set or verify");
+    uiPrintf(6, "the required test clocks.");
+
     if (!g_overrideCheck.readOk) {
-        uiPrintf(5, "Could not read Horizon OC hoc:clk");
-        uiPrintf(6, "Result : 0x%08X", g_overrideCheck.rc);
-        uiPrintf(8, "Boot CFW with Horizon OC / hoc.kip");
-        uiPrintf(11, "A : Check again");
-        uiPrintf(12, "B : Back");
+        uiPrintf(8, "Horizon OC clock read failed.");
+        if (g_overrideCheck.rc)
+            uiPrintf(9, "Result : 0x%08X", g_overrideCheck.rc);
     } else {
-        const char* ok = "\x1b[32mOK\x1b[0m";
-        const char* bad = "\x1b[31mWRONG\x1b[0m";
-        uiPrintf(5, "Set these overrides in Horizon OC:");
-
-        uiPrintf(7, "CPU");
-        uiPrintf(8, "  Required : %s", formatClock(g_overrideCheck.expected.cpuHz).c_str());
-        uiPrintf(9, "  Current  : %s", formatClock(g_overrideCheck.current.overrideHz[0]).c_str());
-        uiPrintf(10, "  Status   : %s", g_overrideCheck.cpuOk ? ok : bad);
-
-        uiPrintf(12, "GPU");
-        uiPrintf(13, "  Required : %s", formatClock(g_overrideCheck.expected.gpuHz).c_str());
-        uiPrintf(14, "  Current  : %s", formatClock(g_overrideCheck.current.overrideHz[1]).c_str());
-        uiPrintf(15, "  Status   : %s", g_overrideCheck.gpuOk ? ok : bad);
-
-        uiPrintf(17, "RAM");
-        uiPrintf(18, "  Required : %s", formatClock(g_overrideCheck.expected.ramHz).c_str());
-        uiPrintf(19, "  Current  : %s", formatClock(g_overrideCheck.current.overrideHz[2]).c_str());
-        uiPrintf(20, "  Status   : %s", g_overrideCheck.ramOk ? ok : bad);
-
-        int row = 22;
-        if (g_overrideAction == PendingOverrideAction::VminProbe) {
-            uiPrintf(row++, "CPU applied clock");
-            uiPrintf(row++, "  Required : %s", formatClock(g_overrideCheck.expected.cpuHz).c_str());
-            uiPrintf(row++, "  Current  : %s", formatClock(g_overrideCheck.current.targetHz[0]).c_str());
-            uiPrintf(row++, "  Status   : %s", g_overrideCheck.cpuAppliedOk ? ok : bad);
-            row++;
-        }
-
-        uiPrintf(row++, "Fix all \x1b[31mWRONG\x1b[0m values, then check again.");
-        row++;
-        uiPrintf(row++, "A : Check again");
-        uiPrintf(row++, "B : Back");
+        uiPrintf(8, "Required test clocks:");
+        uiPrintf(9,  " CPU : %s", formatClock(g_overrideCheck.expected.cpuHz).c_str());
+        uiPrintf(10, " GPU : %s", formatClock(g_overrideCheck.expected.gpuHz).c_str());
+        uiPrintf(11, " RAM : %s", formatClock(g_overrideCheck.expected.ramHz).c_str());
+        uiPrintf(13, "Current Temporary Overrides:");
+        uiPrintf(14, " CPU : %s", formatClock(g_overrideCheck.current.overrideHz[0]).c_str());
+        uiPrintf(15, " GPU : %s", formatClock(g_overrideCheck.current.overrideHz[1]).c_str());
+        uiPrintf(16, " RAM : %s", formatClock(g_overrideCheck.current.overrideHz[2]).c_str());
     }
+
+    uiPrintf(19, "A : Try automatic setup again");
+    uiPrintf(20, "B : Back");
     consoleUpdate(nullptr);
 }
 
@@ -2491,10 +2576,11 @@ void runCurrentTest() {
     int seconds = 0;
     if (!testPlan(g.stage, kind, seconds)) return;
 
-    // Hard pre-flight: every built-in test requires all three expected
-    // Horizon OC Temporary Overrides. A missing/wrong override blocks the test.
+    OverrideExpectation expected{};
+    const bool hasOverrides = overridePlan(g.stage, expected);
+    HocMonClocks before{};
     g_overrideAction = PendingOverrideAction::StartTest;
-    if (!checkAllOverrides(g.stage)) {
+    if (hasOverrides && !setupAutomaticTestOverrides(g.stage, before)) {
         g_overridePrompt = true;
         return;
     }
@@ -2519,6 +2605,8 @@ void runCurrentTest() {
     g.testStage = 0;
     saveState();
 
+    const bool restored = !hasOverrides || restoreTemporaryOverrides(before);
+
     g_resultAction.clear();
     if (g_lastResult.outcome == stress::Outcome::Pass) {
         handlePass();
@@ -2535,6 +2623,8 @@ void runCurrentTest() {
     } else {
         g_resultAction = "The tuning value was NOT marked failed. Fix the test-engine problem and retry.";
     }
+    if (!restored)
+        g_resultAction += " WARNING: the previous test clocks could not be fully restored.";
     g_resultScreen = true;
 }
 
@@ -2911,7 +3001,11 @@ int main(int argc, char** argv) {
                 redraw = true;
             }
         } else if ((k & HidNpadButton_Plus) && g.stage != Stage::Preparation) {
-            if (g.stage == Stage::LowUvValidateQuick) {
+            if (g.stage == Stage::RealWorldValidate) {
+                g_manualPass = true;
+                handlePass();
+                g_manualPass = false;
+            } else if (g.stage == Stage::LowUvValidateQuick) {
                 skipAutomaticRegionValidation(true);
             } else if (g.stage == Stage::LowVminPlateauValidate) {
                 skipAutomaticRegionValidation(false);

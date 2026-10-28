@@ -2643,6 +2643,7 @@ int main(int argc, char** argv) {
             if ((k & HidNpadButton_Y) && (g_configCheck.mask & (Config_Prepare | Config_LowUv | Config_LowVmin))) {
                 g_autoSetMask = g_configCheck.mask;
                 g_autoPrepError.clear();
+                g_configPrompt = false;
                 g_autoPrepConfirm = true;
                 redraw = true;
             } else if ((k & HidNpadButton_X) && g.stage == Stage::Preparation) {
@@ -2679,6 +2680,7 @@ int main(int argc, char** argv) {
             } else if (k & HidNpadButton_B) {
                 g_autoPrepConfirm = false;
                 g_autoPrepError.clear();
+                g_configPrompt = true;
                 redraw = true;
             }
             svcSleepThread(20'000'000);

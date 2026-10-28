@@ -2762,10 +2762,16 @@ int main(int argc, char** argv) {
                 }
                 redraw = true;
             } else if (k & HidNpadButton_A) {
-                const u32 mask = activeConfigMask();
+                u32 mask = g_configCheck.mask;
+                if (g.stage == Stage::LowUvQuick || g.stage == Stage::LowVminQuick)
+                    mask = defaultConfigMaskForStage(g.stage);
                 if (verifyPersistentSettings(mask)) {
+                    g.stageReadyAfterBoot = false;
+                    g.pendingConfigMask = mask;
+                    g_configCheck.mask = mask;
                     g_configPrompt = false;
                     g_rebootConfirm = true;
+                    saveState();
                 }
                 redraw = true;
             } else if (k & HidNpadButton_B) {
@@ -2780,10 +2786,14 @@ int main(int argc, char** argv) {
             if (k & HidNpadButton_A) {
                 g_autoPrepError.clear();
                 if (applyAutomaticCurrentSetting(g_autoSetMask)) {
+                    if (g_autoSetMask & (Config_LowUv | Config_LowVmin))
+                        g.stageReadyAfterBoot = false;
+                    g.pendingConfigMask = g_autoSetMask;
                     g_autoPrepConfirm = false;
                     g_configPrompt = false;
                     g_configCheck.mask = g_autoSetMask;
                     g_rebootConfirm = true;
+                    saveState();
                 }
                 redraw = true;
             } else if (k & HidNpadButton_B) {
@@ -2941,10 +2951,18 @@ int main(int argc, char** argv) {
                 redraw = true;
             }
         } else if (k & HidNpadButton_A) {
-            const u32 cfgMask = activeConfigMask();
+            const bool bootSearch = g.stage == Stage::LowUvQuick || g.stage == Stage::LowVminQuick;
+            const u32 cfgMask = bootSearch ? defaultConfigMaskForStage(g.stage) : activeConfigMask();
             if (cfgMask != Config_None) {
-                if (verifyPersistentSettings(cfgMask)) g_rebootConfirm = true;
-                else g_configPrompt = true;
+                if (verifyPersistentSettings(cfgMask)) {
+                    if (bootSearch) g.stageReadyAfterBoot = false;
+                    g.pendingConfigMask = cfgMask;
+                    g_configCheck.mask = cfgMask;
+                    g_rebootConfirm = true;
+                    saveState();
+                } else {
+                    g_configPrompt = true;
+                }
             } else if (g.stage == Stage::LowUvLong) {
                 runAutomaticLowUvScan();
             } else if (g.stage == Stage::LowUvValidateQuick) {

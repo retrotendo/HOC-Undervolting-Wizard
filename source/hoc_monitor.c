@@ -471,6 +471,50 @@ Result hocmonApplyCpuLow251(int lowUv, int lowVminMv, u32 fieldsMask)
     return rc;
 }
 
+Result hocmonGetConfig251(HocMonConfig* out)
+{
+    if (!out)
+        return 1;
+    memset(out, 0, sizeof(*out));
+
+    Service srv = {0};
+    u32 api = 0;
+    Result rc = hocmonOpen(&srv, &api);
+    if (R_FAILED(rc))
+        return rc;
+    if (api < HOCCLK_API_VERSION_REQUIRED) {
+        serviceClose(&srv);
+        return 2;
+    }
+
+    HocMonRawConfig cfg;
+    memset(&cfg, 0, sizeof(cfg));
+    rc = serviceDispatch(&srv, HOCCLK_IPC_CMD_GET_CONFIG_VALUES,
+        .buffer_attrs = { SfBufferAttr_HipcAutoSelect | SfBufferAttr_Out },
+        .buffers = {{ &cfg, sizeof(cfg) }},
+    );
+    serviceClose(&srv);
+    if (R_FAILED(rc))
+        return rc;
+
+    if ((u32)cfg.values[CFG251_KIP_VERSION] != 251U)
+        return 4;
+
+    out->uncappedClocks = cfg.values[CFG251_UNCAPPED_CLOCKS] != 0;
+    out->hpMode = cfg.values[CFG251_HP_MODE] != 0;
+    out->vdd2Uv = (u32)cfg.values[CFG251_VDD2_UV];
+    out->ramMaxKHz = (u32)cfg.values[CFG251_RAM_MAX_KHZ];
+    out->vddqUv = (u32)cfg.values[CFG251_VDDQ_UV];
+    out->lowUv = (int)cfg.values[CFG251_CPU_LOW_UV];
+    out->highUv = (int)cfg.values[CFG251_CPU_HIGH_UV];
+    out->tableConf = (int)cfg.values[CFG251_CPU_TABLE];
+    out->lowVminMv = (int)cfg.values[CFG251_CPU_LOW_VMIN_MV];
+    out->highVminMv = (int)cfg.values[CFG251_CPU_HIGH_VMIN_MV];
+    out->cpuMaxKHz = (u32)cfg.values[CFG251_CPU_MAX_KHZ];
+    out->cpuBoostKHz = (u32)cfg.values[CFG251_CPU_BOOST_KHZ];
+    return 0;
+}
+
 Result hocmonGetConfigDebug(HocMonConfigDebug* out)
 {
     if (!out)

@@ -1329,7 +1329,10 @@ enum class BootInference { Unknown, RequestedActive, SaferActive };
 
 BootInference inferBootState(int* activeValue = nullptr) {
     HocMonConfig c{};
-    if (!readHocConfigIni(c)) return BootInference::Unknown;
+    // After reboot, inspect the RUNNING Horizon OC config, not only config.ini.
+    // If hoc:clk is unavailable (for example CFW No OC), the boot cannot be
+    // counted as a successful normal-HOC boot.
+    if (R_FAILED(hocmonGetConfig251(&c))) return BootInference::Unknown;
 
     if (g.stage == Stage::Preparation)
         return configMatchesCurrent(Config_Prepare, c) ? BootInference::RequestedActive : BootInference::Unknown;

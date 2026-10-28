@@ -100,6 +100,9 @@ Result hocmonApplyPreparation251(const HocMonConfig* desired);
  */
 Result hocmonApplyCpuLow251(int lowUv, int lowVminMv, u32 fieldsMask);
 
+/* Read the running Horizon OC 2.5.1 config through hoc:clk/GetConfigValues. */
+Result hocmonGetConfig251(HocMonConfig* out);
+
 /* Raw hoc:clk config-list diagnostics. Read-only; used by debug builds. */
 Result hocmonGetConfigDebug(HocMonConfigDebug* out);
 

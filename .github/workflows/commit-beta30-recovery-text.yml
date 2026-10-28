@@ -1,0 +1,29 @@
+name: Apply beta30 recovery confirmation text
+
+on:
+  push:
+    branches:
+      - beta30-flow
+    paths:
+      - 'tools/patch_beta30_recovery_text.py'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: beta30-flow
+      - name: Patch recovery text
+        run: python3 tools/patch_beta30_recovery_text.py
+      - name: Commit source change
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add source/main.cpp
+          git diff --cached --check
+          git commit -m "Clarify beta30 recovery last-good confirmation"
+          git push origin HEAD:beta30-flow

@@ -202,6 +202,7 @@ bool g_autoPrepConfirm = false;
 u32 g_autoSetMask = Config_Prepare;
 std::string g_autoPrepError;
 bool g_bootPrompt = false;
+int g_bootRecoveryCandidate = -1;
 bool g_scanForLowUv = false;
 ConfigCheckState g_configCheck;
 Result g_rebootError = 0;
@@ -1234,10 +1235,12 @@ void printOverrides(int row, const OverrideExpectation& e) {
 void footerTest(int row) {
     uiPrintf(row,     "Keys:");
     uiPrintf(row + 1, "A : Start Test");
-    uiPrintf(row + 2, "+ : Known PASS / Skip");
-    uiPrintf(row + 3, "X : Known FAIL / Skip");
-    uiPrintf(row + 4, "B : Exit");
-    printResetHint(row + 4);
+    uiPrintf(row + 2, "    If the test crashes, reboot and");
+    uiPrintf(row + 3, "    open the Wizard again.");
+    uiPrintf(row + 4, "+ : Known PASS / Skip step");
+    uiPrintf(row + 5, "X : Known FAIL / Skip");
+    uiPrintf(row + 6, "B : Exit");
+    printResetHint(row + 6);
 }
 
 
@@ -1280,9 +1283,9 @@ void renderVminScanScreen() {
         uiPrintf(row++, " %d. %s @ ~%d mV", i + 1, formatClock(g.vminValidateHz[i]).c_str(), g.vminValidateMv[i]);
     row += 2;
     uiPrintf(row++, "A : Start automatic stability test");
-    row++;
-    uiPrintf(row++, "If the test crashes, reboot and");
-    uiPrintf(row++, "open the Wizard again.");
+    uiPrintf(row++, "    If the test crashes, reboot and");
+    uiPrintf(row++, "    open the Wizard again.");
+    uiPrintf(row++, "+ : Known PASS / Skip step");
     uiPrintf(row++, "B : Exit");
     consoleUpdate(nullptr);
 }
@@ -1382,9 +1385,6 @@ void renderBootPrompt() {
     row++;
 
     if (state == BootInference::RequestedActive) {
-        uiPrintf(row++, "\x1b[32mRequested value is active.\x1b[0m");
-        uiPrintf(row++, "Console booted with requested value.");
-        row++;
         uiPrintf(row++, "Only continue if normal CFW booted AND:");
         uiPrintf(row++, " - no system freeze");
         uiPrintf(row++, " - no crash");
@@ -1393,18 +1393,19 @@ void renderBootPrompt() {
         uiPrintf(row++, "A : Stable boot - continue");
         uiPrintf(row++, "X : Not stable / crashed / froze");
     } else if (state == BootInference::SaferActive) {
-        uiPrintf(row++, "\x1b[33mRequested value is NOT active.\x1b[0m");
-        uiPrintf(row++, "It looks like this value did not boot.");
-        uiPrintf(row++, "Recovery restored last working value.");
+        if (g_bootRecoveryCandidate < 0) g_bootRecoveryCandidate = active;
+        if (g.stage == Stage::LowUvQuick)
+            uiPrintf(row++, "It looks like Low UV %d did not boot.", g.lowUvTest);
+        else if (g.stage == Stage::LowVminQuick)
+            uiPrintf(row++, "It looks like Low VMIN %d mV did not boot.", g.lowVminTest);
         row++;
         if (g.stage == Stage::LowUvQuick)
-            uiPrintf(row++, "\x1b[32mLast good value: Low UV %d\x1b[0m", active);
+            uiPrintf(row++, "\x1b[32mLast good value: Low UV %d\x1b[0m", g_bootRecoveryCandidate);
         else if (g.stage == Stage::LowVminQuick)
-            uiPrintf(row++, "\x1b[32mLast good value: Low VMIN %d mV\x1b[0m", active);
+            uiPrintf(row++, "\x1b[32mLast good value: Low VMIN %d mV\x1b[0m", g_bootRecoveryCandidate);
         row++;
-        uiPrintf(row++, "Confirm this matches your recovery.");
         uiPrintf(row++, "A : Confirm last good value");
-        uiPrintf(row++, "X : This is not correct");
+        uiPrintf(row++, "X : Try one safer value");
     } else {
         uiPrintf(row++, "\x1b[31mCould not confirm active value.\x1b[0m");
         uiPrintf(row++, "Check Horizon OC / recovery state.");
@@ -1735,9 +1736,9 @@ void renderTestStage() {
         uiPrintf(row++, "Each CPU frequency runs for 1 minute.");
         row += 2;
         uiPrintf(row++, "A : Start automatic stability test");
-        row++;
-        uiPrintf(row++, "If the test crashes, reboot and");
-        uiPrintf(row++, "open the Wizard again.");
+        uiPrintf(row++, "    If the test crashes, reboot and");
+        uiPrintf(row++, "    open the Wizard again.");
+        uiPrintf(row++, "+ : Known PASS / Skip step");
         uiPrintf(row++, "B : Exit");
         printResetHint(row - 1);
         return;
@@ -2333,6 +2334,31 @@ void runAutomaticLowUvScan() {
     runAutomaticVoltageScan(true);
 }
 
+void skipAutomaticRegionValidation(bool forLowUv) {
+    clearVminSweepData();
+    if (forLowUv) {
+        if (g.lowVminGood <= LOW_VMIN_MIN_MV) {
+            g.stage = Stage::LowVminLong;
+            g.stageReadyAfterBoot = true;
+        } else {
+            g.stage = Stage::LowVminQuick;
+            g.lowVminTest = std::max(LOW_VMIN_MIN_MV, g.lowVminGood - LOW_VMIN_STEP_MV);
+            g.stageReadyAfterBoot = false;
+        }
+    } else {
+        if (g.vddqGood <= VDDQ_MIN_MV) {
+            g.stage = Stage::VddqLong;
+            g.stageReadyAfterBoot = true;
+        } else {
+            g.stage = Stage::VddqQuick;
+            g.vddqTest = g.vddqGood - VDDQ_STEP_MV;
+            g.stageReadyAfterBoot = false;
+        }
+    }
+    g.pendingConfigMask = Config_None;
+    saveState();
+}
+
 void runAutomaticRegionValidation(bool forLowUv) {
     if (g.vminValidateCount <= 0) {
         g_resultAction = "No voltage regions were available. Run the voltage scan again.";
@@ -2579,10 +2605,11 @@ int main(int argc, char** argv) {
         }
 
         if (g_bootPrompt) {
+            int active = 0;
+            const BootInference state = inferBootState(&active);
             if (k & HidNpadButton_A) {
-                int active = 0;
-                const BootInference state = inferBootState(&active);
                 if (state == BootInference::RequestedActive) {
+                    g_bootRecoveryCandidate = -1;
                     g.rebootPending = false;
                     g_bootPrompt = false;
                     g.pendingConfigMask = Config_None;
@@ -2597,23 +2624,55 @@ int main(int argc, char** argv) {
                         saveState();
                     }
                 } else if (state == BootInference::SaferActive) {
+                    const int confirmed = g_bootRecoveryCandidate >= 0 ? g_bootRecoveryCandidate : active;
+                    const Stage recoveryStage = g.stage;
+                    const bool needsApply = confirmed != active;
                     g.rebootPending = false;
                     g_bootPrompt = false;
-                    g.pendingConfigMask = Config_None;
-                    if (g.stage == Stage::LowUvQuick) {
-                        g.lowUvGood = std::max(0, active);
-                        g.stage = Stage::LowUvLong;
-                        g.stageReadyAfterBoot = true;
-                    } else if (g.stage == Stage::LowVminQuick) {
-                        g.lowVminGood = active;
-                        g.stage = Stage::LowVminLong;
-                        g.stageReadyAfterBoot = true;
-                    }
+                    g_bootRecoveryCandidate = -1;
                     clearVminSweepData();
-                    saveState();
+
+                    u32 recoveryMask = Config_None;
+                    if (recoveryStage == Stage::LowUvQuick) {
+                        g.lowUvGood = std::max(0, confirmed);
+                        g.lowUvTest = g.lowUvGood;
+                        g.stage = Stage::LowUvLong;
+                        recoveryMask = Config_LowUv;
+                    } else if (recoveryStage == Stage::LowVminQuick) {
+                        g.lowVminGood = confirmed;
+                        g.lowVminTest = g.lowVminGood;
+                        g.stage = Stage::LowVminLong;
+                        recoveryMask = Config_LowVmin;
+                    }
+
+                    if (!needsApply) {
+                        g.pendingConfigMask = Config_None;
+                        g.stageReadyAfterBoot = true;
+                        saveState();
+                    } else {
+                        g.stageReadyAfterBoot = false;
+                        g.pendingConfigMask = recoveryMask;
+                        saveState();
+                        g_autoSetMask = recoveryMask;
+                        g_autoPrepError.clear();
+                        if (applyAutomaticCurrentSetting(recoveryMask)) {
+                            g_configCheck.mask = recoveryMask;
+                            g_rebootConfirm = true;
+                        } else {
+                            g_autoPrepConfirm = true;
+                        }
+                    }
                 }
                 redraw = true;
+            } else if ((k & HidNpadButton_X) && state == BootInference::SaferActive) {
+                if (g_bootRecoveryCandidate < 0) g_bootRecoveryCandidate = active;
+                if (g.stage == Stage::LowUvQuick)
+                    g_bootRecoveryCandidate = std::max(0, g_bootRecoveryCandidate - 1);
+                else if (g.stage == Stage::LowVminQuick)
+                    g_bootRecoveryCandidate = std::min(750, g_bootRecoveryCandidate + LOW_VMIN_STEP_MV);
+                redraw = true;
             } else if (k & HidNpadButton_X) {
+                g_bootRecoveryCandidate = -1;
                 g.rebootPending = false;
                 g_bootPrompt = false;
                 handleFail(true);
@@ -2637,6 +2696,10 @@ int main(int argc, char** argv) {
                     else runAutomaticVminScan();
                     redraw = true;
                 }
+            } else if ((k & HidNpadButton_Plus) && g_vminScanSuccess) {
+                g_vminScanScreen = false;
+                skipAutomaticRegionValidation(g_scanForLowUv);
+                redraw = true;
             } else if (k & HidNpadButton_B) {
                 g_vminScanScreen = false;
                 redraw = true;
@@ -2838,15 +2901,26 @@ int main(int argc, char** argv) {
                 redraw = true;
             }
         } else if ((k & HidNpadButton_Plus) && g.stage != Stage::Preparation) {
-            if (isVminSweepStage(g.stage)) {
+            if (g.stage == Stage::LowUvValidateQuick) {
+                skipAutomaticRegionValidation(true);
+            } else if (g.stage == Stage::LowVminPlateauValidate) {
+                skipAutomaticRegionValidation(false);
+            } else if (isVminSweepStage(g.stage)) {
                 runAutomaticVminScan();
             } else {
                 const u32 cfgMask = activeConfigMask();
                 stress::Kind skipKind;
                 int skipSeconds = 0;
-                if (cfgMask != Config_None) {
-                    // KNOWN PASS skips the reboot/stress validation, not the
-                    // requirement to actually have the requested HOC value set.
+                const bool searchSetting = g.stage == Stage::LowUvQuick ||
+                                           g.stage == Stage::LowVminQuick ||
+                                           g.stage == Stage::VddqQuick ||
+                                           g.stage == Stage::Vdd2Quick ||
+                                           g.stage == Stage::HighUvQuick;
+                if (cfgMask != Config_None && searchSetting) {
+                    g_manualPass = true;
+                    handlePass();
+                    g_manualPass = false;
+                } else if (cfgMask != Config_None) {
                     if (verifyPersistentSettings(cfgMask)) {
                         g_manualPass = true;
                         handlePass();

@@ -30,3 +30,4 @@ if old not in s:
     raise SystemExit('target block not found')
 p.write_text(s.replace(old, new, 1))
 print('recovery text patched')
+# trigger workflow after it was added

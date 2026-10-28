@@ -6,6 +6,7 @@ on:
       - beta33-ui-consistency
     paths:
       - 'tools/patch_beta33_ui.py'
+      - '.github/workflows/commit-beta33-ui.yml'
 
 permissions:
   contents: write

@@ -1547,8 +1547,10 @@ void renderConfigPrompt() {
     }
     uiPrintf(row + 1, "Fix \x1b[31mWRONG\x1b[0m values in Horizon OC.");
     uiPrintf(row + 3, "A : Check again");
-    if (m & (Config_Prepare | Config_LowUv | Config_LowVmin))
-        uiPrintf(row + 4, "Y : Set required value(s) automatically");
+    if (m & Config_Prepare)
+        uiPrintf(row + 4, "Y : Set required values automatically");
+    else if (m & (Config_LowUv | Config_LowVmin))
+        uiPrintf(row + 4, "Y : Set required value automatically");
     if (g.stage == Stage::Preparation) {
         uiPrintf(row + 5, "X : Use my current settings as baseline");
         uiPrintf(row + 6, "B : Back");
@@ -1573,7 +1575,10 @@ void renderAutoPrepConfirm() {
     uiPrintf(9, "Horizon OC 2.5.1 is required.");
     if (!g_autoPrepError.empty())
         uiPrintf(12, "\x1b[31m%s\x1b[0m", g_autoPrepError.c_str());
-    uiPrintf(16, "A : Confirm - set value(s)");
+    if (g_autoSetMask & Config_Prepare)
+        uiPrintf(16, "A : Confirm - set values");
+    else
+        uiPrintf(16, "A : Confirm - set value");
     uiPrintf(17, "B : Cancel");
     consoleUpdate(nullptr);
 }

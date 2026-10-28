@@ -1385,8 +1385,7 @@ void renderBootPrompt() {
         uiPrintf(row++, "X : Not stable / crashed / froze");
     } else if (state == BootInference::SaferActive) {
         uiPrintf(row++, "\x1b[33mRequested value is NOT active.\x1b[0m");
-        uiPrintf(row++, "It looks like the console did not boot");
-        uiPrintf(row++, "Requested value likely did not boot.");
+        uiPrintf(row++, "It looks like this value did not boot.");
         uiPrintf(row++, "Recovery restored last working value.");
         row++;
         if (g.stage == Stage::LowUvQuick)

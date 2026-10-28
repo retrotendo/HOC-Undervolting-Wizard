@@ -18,7 +18,7 @@ ROMFS       := romfs
 
 APP_TITLE   := HOC Undervolting Wizard
 APP_AUTHOR  := Retrotendo / Community
-APP_VERSION := 0.4.0-beta.35
+APP_VERSION := 0.4.0-beta.36
 
 ARCH        := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 CFLAGS      := -g -Wall -O2 -ffunction-sections $(ARCH) $(DEFINES) `curl-config --cflags`
@@ -79,10 +79,9 @@ clean:
 	@rm -fr $(BUILD) $(ROMFS) $(TARGET).nro $(TARGET).nacp $(TARGET).elf
 else
 DEPENDS := $(OFILES:.o=.d)
-ifneq ($(strip $(APP_TITLE)),)
-$(OUTPUT).nro : $(OUTPUT).elf $(OUTPUT).nacp
+ifeq ($(strip $(APP_TITLE)),)
 else
-$(OUTPUT).nro : $(OUTPUT).elf
+$(OUTPUT).nro : $(OUTPUT).elf $(OUTPUT).nacp
 endif
 $(OUTPUT).elf : $(OFILES)
 

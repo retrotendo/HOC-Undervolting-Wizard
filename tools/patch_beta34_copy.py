@@ -15,3 +15,4 @@ replace_once('''    uiPrintf(16, "A : Confirm - set value(s)");\n''', '''    if 
 
 p.write_text(s)
 print('beta34 singular/plural copy patch applied')
+# trigger

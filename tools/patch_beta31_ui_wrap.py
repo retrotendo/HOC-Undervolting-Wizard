@@ -78,3 +78,4 @@ for line in visible_lines:
         raise SystemExit(f'beta31 line too wide ({len(line)}): {line}')
 
 print('beta31 UI width patch applied; guarded lines <= 39 characters')
+# trigger

@@ -29,9 +29,10 @@ jobs:
 
       - name: Commit patched sources
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add source/main.cpp source/hoc_monitor.c source/hoc_monitor.h
-          git diff --cached --check
-          git commit -m "Implement beta30 guided Low UV and Low VMIN flow"
-          git push origin HEAD:beta30-flow
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git -C "$GITHUB_WORKSPACE" config user.name "github-actions[bot]"
+          git -C "$GITHUB_WORKSPACE" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "$GITHUB_WORKSPACE" add source/main.cpp source/hoc_monitor.c source/hoc_monitor.h
+          git -C "$GITHUB_WORKSPACE" diff --cached --check
+          git -C "$GITHUB_WORKSPACE" commit -m "Implement beta30 guided Low UV and Low VMIN flow"
+          git -C "$GITHUB_WORKSPACE" push origin HEAD:beta30-flow

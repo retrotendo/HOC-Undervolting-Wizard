@@ -1205,9 +1205,13 @@ const char* compactStepName(Stage s) {
 
 void title() {
     uiPrintf(1, "\x1b[36mBattery Wizard\x1b[0m");
-    std::printf("\x1b[1;70H- : Reset");
     uiPrintf(2, "Step : %s", compactStepName(g.stage));
     uiPrintf(3, "----------------------------------------");
+}
+
+void printResetHint(int lastOptionRow) {
+    // Keep three empty lines between the final action and Reset.
+    uiPrintf(lastOptionRow + 4, "- : Reset");
 }
 
 const char* compactTestName(stress::Kind kind) {
@@ -1233,6 +1237,7 @@ void footerTest(int row) {
     uiPrintf(row + 2, "+ : Known PASS / Skip");
     uiPrintf(row + 3, "X : Known FAIL / Skip");
     uiPrintf(row + 4, "B : Exit");
+    printResetHint(row + 4);
 }
 
 
@@ -1293,6 +1298,7 @@ void renderHardwareDetection() {
         uiPrintf(13, "             Guide estimate - silicon varies");
         uiPrintf(16, "A : Continue to Preparation");
         uiPrintf(17, "B : Exit");
+        printResetHint(17);
         return;
     }
 
@@ -1323,6 +1329,7 @@ void renderHardwareDetection() {
 
     uiPrintf(18, "A : Retry detection");
     uiPrintf(19, "B : Exit");
+    printResetHint(19);
 }
 
 
@@ -1629,6 +1636,7 @@ void renderPreparation() {
     uiPrintf(30, "X : Use my current settings as baseline");
     uiPrintf(31, "Y : Set values automatically + reboot");
     uiPrintf(32, "B : Exit");
+    printResetHint(32);
 }
 
 
@@ -1677,8 +1685,9 @@ void renderTestStage() {
         uiPrintf(row++, "A : Check setting");
         if (configMask & (Config_LowUv | Config_LowVmin))
             uiPrintf(row++, "Y : Set value automatically");
-        uiPrintf(row++, "+ : Skip to next value");
+        uiPrintf(row++, "+ : Known stable / Skip to next value");
         uiPrintf(row++, "B : Exit");
+        printResetHint(row - 1);
         return;
     }
 
@@ -1702,6 +1711,7 @@ void renderTestStage() {
         row += 2;
         uiPrintf(row++, "A : Scan voltage regions automatically");
         uiPrintf(row++, "B : Exit");
+        printResetHint(row - 1);
         return;
     }
 
@@ -1720,6 +1730,7 @@ void renderTestStage() {
         row += 2;
         uiPrintf(row++, "A : Start automatic validation");
         uiPrintf(row++, "B : Exit");
+        printResetHint(row - 1);
         return;
     }
 
@@ -1756,6 +1767,7 @@ void renderRealWorld() {
     uiPrintf(16, "A : PASS");
     uiPrintf(17, "X : FAIL");
     uiPrintf(18, "B : Exit");
+    printResetHint(18);
 }
 
 void renderComplete() {
@@ -1770,6 +1782,7 @@ void renderComplete() {
     uiPrintf(14, "Saved to:");
     uiPrintf(15, "/switch/HOC-Undervolting-Wizard/results.txt");
     uiPrintf(17, "B : Exit");
+    printResetHint(17);
 }
 
 void renderInterruptedPrompt() {

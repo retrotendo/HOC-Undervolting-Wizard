@@ -1,0 +1,30 @@
+name: Apply beta30 live-active boot check
+
+on:
+  push:
+    branches:
+      - beta30-flow
+    paths:
+      - '.github/workflows/commit-beta30-live-active.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: beta30-flow
+      - name: Apply live-active patch
+        run: python3 tools/patch_beta30_live_active.py
+      - name: Commit source changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add source/main.cpp source/hoc_monitor.c source/hoc_monitor.h
+          git diff --cached --check
+          git commit -m "Read active HOC config for beta30 boot verification"
+          git push origin HEAD:beta30-flow

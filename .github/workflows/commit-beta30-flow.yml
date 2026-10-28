@@ -1,0 +1,33 @@
+name: Commit beta30 guided CPU tuning sources
+
+on:
+  push:
+    branches:
+      - beta30-flow
+    paths:
+      - '.github/workflows/commit-beta30-flow.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: beta30-flow
+
+      - name: Apply beta30 flow patch
+        run: python3 tools/apply_beta30_flow.py
+
+      - name: Commit patched sources
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add source/main.cpp source/hoc_monitor.c source/hoc_monitor.h
+          git diff --cached --check
+          git commit -m "Implement beta30 guided Low UV and Low VMIN flow"
+          git push origin HEAD:beta30-flow

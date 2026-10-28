@@ -1173,7 +1173,7 @@ const char* compactStepName(Stage s) {
         case Stage::LowUvQuick: return "CPU Low UV - Boot Search";
         case Stage::LowUvValidateQuick: return "CPU Low UV - Region Test";
         case Stage::LowUvLong: return "CPU Low UV - Voltage Scan";
-        case Stage::LowVminQuick: return "CPU Low VMIN";
+        case Stage::LowVminQuick: return "CPU Low VMIN - Boot Search";
         case Stage::LowVminLong: return "CPU Low VMIN - Clock Check";
         case Stage::LowVminSweep612: return "CPU Low VMIN - Clock Check";
         case Stage::LowVminSweep714: return "CPU Low VMIN - Clock Check";
@@ -1205,6 +1205,7 @@ const char* compactStepName(Stage s) {
 
 void title() {
     uiPrintf(1, "\x1b[36mBattery Wizard\x1b[0m");
+    std::printf("\x1b[1;70H- : Reset");
     uiPrintf(2, "Step : %s", compactStepName(g.stage));
     uiPrintf(3, "----------------------------------------");
 }
@@ -1231,7 +1232,7 @@ void footerTest(int row) {
     uiPrintf(row + 1, "A : Start Test");
     uiPrintf(row + 2, "+ : Known PASS / Skip");
     uiPrintf(row + 3, "X : Known FAIL / Skip");
-    uiPrintf(row + 4, "B : Exit    - : Reset");
+    uiPrintf(row + 4, "B : Exit");
 }
 
 
@@ -1556,19 +1557,17 @@ void renderAutoPrepConfirm() {
     uiPrintf(2, "Step : Automatic Setting");
     uiPrintf(3, "----------------------------------------");
     if (g_autoSetMask & Config_Prepare)
-        uiPrintf(5, "Auto-set required Preparation values?");
+        uiPrintf(5, "Set all required Preparation values?");
     else if (g_autoSetMask & Config_LowUv)
         uiPrintf(5, "Set CPU Low UV %d automatically?", targetLowUv());
     else if (g_autoSetMask & Config_LowVmin)
         uiPrintf(5, "Set CPU Low VMIN %d mV automatically?", targetLowVmin());
-    uiPrintf(7, "Uses HOC SetConfigValues + Save KIP.");
-    uiPrintf(8, "Other Horizon OC values stay unchanged.");
-    uiPrintf(10, "Horizon OC 2.5.1 is required.");
-    uiPrintf(12, "Value is read back before reboot.");
+    uiPrintf(7, "Other Horizon OC values stay unchanged.");
+    uiPrintf(9, "Horizon OC 2.5.1 is required.");
     if (!g_autoPrepError.empty())
-        uiPrintf(15, "\x1b[31m%s\x1b[0m", g_autoPrepError.c_str());
-    uiPrintf(20, "A : Confirm - set value(s)");
-    uiPrintf(21, "B : Cancel");
+        uiPrintf(12, "\x1b[31m%s\x1b[0m", g_autoPrepError.c_str());
+    uiPrintf(16, "A : Confirm - set value(s)");
+    uiPrintf(17, "B : Cancel");
     consoleUpdate(nullptr);
 }
 
@@ -1587,48 +1586,51 @@ void renderRebootConfirm() {
     else
         uiPrintf(5, "\x1b[32mRequested setting saved and verified.\x1b[0m");
 
-    uiPrintf(7, "Reboot required to apply the KIP value.");
-    uiPrintf(8, "After reboot, open this Wizard again.");
-    uiPrintf(10, "\x1b[33mIf normal CFW fails to boot or crashes:\x1b[0m");
-    uiPrintf(11, "1. Boot Hekate.");
-    uiPrintf(12, "2. Start CFW No OC / without hoc.kip.");
-    uiPrintf(13, "3. Restore the previous safe value.");
-    uiPrintf(14, "4. Reboot normal CFW.");
-    uiPrintf(15, "5. Open this Wizard again.");
-    uiPrintf(18, "A : Reboot now");
-    uiPrintf(19, "B : Back");
+    uiPrintf(7, "Reboot is required to apply settings.");
+    uiPrintf(8, "After normal CFW boots, open Wizard again.");
+    uiPrintf(10, "\x1b[31mIf normal CFW does not boot,\x1b[0m");
+    uiPrintf(11, "\x1b[31mfreezes or crashes:\x1b[0m");
+    uiPrintf(13, "1. Boot Hekate.");
+    uiPrintf(14, "2. Start CFW No OC.");
+    uiPrintf(15, "3. Restore the previous safe value.");
+    uiPrintf(16, "4. Reboot normal CFW.");
+    uiPrintf(17, "5. Open this Wizard again.");
+    uiPrintf(20, "A : Reboot now");
+    uiPrintf(21, "B : Back");
     consoleUpdate(nullptr);
 }
 
 void renderPreparation() {
     title();
-    uiPrintf(5, "@ Horizon OC");
+    uiPrintf(5, "Set these values:");
+    uiPrintf(7, "@ Horizon OC");
 
-    uiPrintf(7, "General:");
-    uiPrintf(8, " - Uncapped Clocks : OFF");
+    uiPrintf(9, "General:");
+    uiPrintf(10, " - Uncapped Clocks : OFF");
 
-    uiPrintf(10, "RAM Settings:");
-    uiPrintf(11, " - HP Mode         : OFF");
-    uiPrintf(12, " - RAM Max         : 1600 MHz");
-    uiPrintf(13, " - VDD2            : 1175 mV");
-    uiPrintf(14, " - VDDQ            : %d mV", g.vddqStartMv);
+    uiPrintf(12, "RAM Settings:");
+    uiPrintf(13, " - HP Mode         : OFF");
+    uiPrintf(14, " - RAM Max         : 1600 MHz");
+    uiPrintf(15, " - VDD2            : 1175 mV");
+    uiPrintf(16, " - VDDQ            : %d mV", g.vddqStartMv);
 
-    uiPrintf(16, "CPU Settings:");
-    uiPrintf(17, " - CPU Max         : Lowest selectable (1963)");
-    uiPrintf(18, " - Low VMIN        : 620 mV");
-    uiPrintf(19, " - High VMIN       : 750 mV");
-    uiPrintf(20, " - UV Table        : 1683 MHz Tbreak");
-    uiPrintf(21, " - Low UV          : 0");
-    uiPrintf(22, " - High UV         : 0");
+    uiPrintf(18, "CPU Settings:");
+    uiPrintf(19, " - CPU Max         : Lowest selectable (1963)");
+    uiPrintf(20, " - Low VMIN        : 620 mV");
+    uiPrintf(21, " - High VMIN       : 750 mV");
+    uiPrintf(22, " - UV Table        : 1683 MHz Tbreak");
+    uiPrintf(23, " - Low UV          : 0");
+    uiPrintf(24, " - High UV         : 0");
 
-    uiPrintf(24, "@ HOC Toolkit");
-    uiPrintf(26, " - CPU Boost : lowest / 1785 MHz");
+    uiPrintf(26, "@ HOC Toolkit");
+    uiPrintf(27, " - CPU Boost : lowest / 1785 MHz");
 
-    uiPrintf(28, "A : Check settings");
-    uiPrintf(29, "X : Use my current settings as baseline");
-    uiPrintf(30, "Y : Set values automatically + reboot");
-    uiPrintf(31, "B : Exit    - : Reset");
+    uiPrintf(29, "A : Check settings");
+    uiPrintf(30, "X : Use my current settings as baseline");
+    uiPrintf(31, "Y : Set values automatically + reboot");
+    uiPrintf(32, "B : Exit");
 }
+
 
 
 bool isVminSweepStage(Stage st);
@@ -1638,24 +1640,45 @@ void renderTestStage() {
 
     const u32 configMask = activeConfigMask();
     if (configMask != Config_None) {
-        uiPrintf(5, "@ Horizon OC");
-        uiPrintf(7, (configMask & (Config_Vddq | Config_Vdd2)) ? "RAM Settings:" : "CPU Settings:");
-        int setRow = 8;
-        if (configMask & Config_LowUv) uiPrintf(setRow++, " - Low UV   : %d", targetLowUv());
-        if (configMask & Config_LowVmin) uiPrintf(setRow++, " - Low VMIN : %d mV", targetLowVmin());
-        if (configMask & Config_Vddq) uiPrintf(setRow++, " - VDDQ     : %d mV", targetVddqMv());
-        if (configMask & Config_Vdd2) uiPrintf(setRow++, " - VDD2     : %s", formatVdd2(targetVdd2Uv()).c_str());
-        if (configMask & Config_HighUv) uiPrintf(setRow++, " - High UV  : %d", targetHighUv());
-        setRow += 2;
-        if (g.stage == Stage::LowUvQuick)
-            uiPrintf(setRow++, "Find highest Low UV that boots.");
-        else if (g.stage == Stage::LowVminQuick)
-            uiPrintf(setRow++, "Lower Low VMIN 10 mV until boot fails.");
-        uiPrintf(setRow++, "A : Check setting");
+        int row = 5;
+        uiPrintf(row++, "Objective:");
+        if (g.stage == Stage::LowUvQuick) {
+            uiPrintf(row++, "Find the highest Low UV that can");
+            uiPrintf(row++, "boot normally.");
+        } else if (g.stage == Stage::LowVminQuick) {
+            uiPrintf(row++, "Find the lowest Low VMIN that can");
+            uiPrintf(row++, "boot normally.");
+        } else if (g.stage == Stage::VddqQuick) {
+            uiPrintf(row++, "Find the lowest VDDQ that remains");
+            uiPrintf(row++, "stable.");
+        } else if (g.stage == Stage::Vdd2Quick) {
+            uiPrintf(row++, "Find the lowest VDD2 that remains");
+            uiPrintf(row++, "stable.");
+        } else if (g.stage == Stage::HighUvQuick) {
+            uiPrintf(row++, "Find the highest High UV that remains");
+            uiPrintf(row++, "stable.");
+        } else {
+            uiPrintf(row++, "Apply the required value before");
+            uiPrintf(row++, "continuing.");
+        }
+        row++;
+        const bool multiple = (configMask & Config_Vddq) && (configMask & Config_Vdd2);
+        uiPrintf(row++, multiple ? "Set values:" : "Set value:");
+        row++;
+        uiPrintf(row++, "@ Horizon OC");
+        row++;
+        uiPrintf(row++, (configMask & (Config_Vddq | Config_Vdd2)) ? "RAM Settings:" : "CPU Settings:");
+        if (configMask & Config_LowUv) uiPrintf(row++, " - Low UV   : %d", targetLowUv());
+        if (configMask & Config_LowVmin) uiPrintf(row++, " - Low VMIN : %d mV", targetLowVmin());
+        if (configMask & Config_Vddq) uiPrintf(row++, " - VDDQ     : %d mV", targetVddqMv());
+        if (configMask & Config_Vdd2) uiPrintf(row++, " - VDD2     : %s", formatVdd2(targetVdd2Uv()).c_str());
+        if (configMask & Config_HighUv) uiPrintf(row++, " - High UV  : %d", targetHighUv());
+        row += 2;
+        uiPrintf(row++, "A : Check setting");
         if (configMask & (Config_LowUv | Config_LowVmin))
-            uiPrintf(setRow++, "Y : Set value automatically");
-        uiPrintf(setRow++, "+ : Known PASS / Skip");
-        uiPrintf(setRow++, "B : Exit    - : Reset");
+            uiPrintf(row++, "Y : Set value automatically");
+        uiPrintf(row++, "+ : Skip to next value");
+        uiPrintf(row++, "B : Exit");
         return;
     }
 
@@ -1746,7 +1769,7 @@ void renderComplete() {
     uiPrintf(12, "CPU High UV  : %d", g.highUvGood);
     uiPrintf(14, "Saved to:");
     uiPrintf(15, "/switch/HOC-Undervolting-Wizard/results.txt");
-    uiPrintf(17, "B : Exit    - : Reset");
+    uiPrintf(17, "B : Exit");
 }
 
 void renderInterruptedPrompt() {

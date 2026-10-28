@@ -1,0 +1,29 @@
+name: Apply beta31 UI width fixes
+
+on:
+  push:
+    branches:
+      - beta31-ui-wrap
+    paths:
+      - 'tools/patch_beta31_ui_wrap.py'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: beta31-ui-wrap
+      - name: Apply UI width patch
+        run: python3 tools/patch_beta31_ui_wrap.py
+      - name: Commit source change
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add source/main.cpp
+          git diff --cached --check
+          git commit -m "Fit beta30 wizard text to Switch screen width"
+          git push origin HEAD:beta31-ui-wrap

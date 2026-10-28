@@ -79,9 +79,10 @@ clean:
 	@rm -fr $(BUILD) $(ROMFS) $(TARGET).nro $(TARGET).nacp $(TARGET).elf
 else
 DEPENDS := $(OFILES:.o=.d)
-ifeq ($(strip $(APP_TITLE)),)
-else
+ifneq ($(strip $(APP_TITLE)),)
 $(OUTPUT).nro : $(OUTPUT).elf $(OUTPUT).nacp
+else
+$(OUTPUT).nro : $(OUTPUT).elf
 endif
 $(OUTPUT).elf : $(OFILES)
 

@@ -1,0 +1,29 @@
+name: Apply beta39 voltage-scan/final-test patch
+
+on:
+  push:
+    branches:
+      - beta39-voltage-scan-final-tests
+    paths:
+      - '.github/workflows/commit-beta39.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: beta39-voltage-scan-final-tests
+      - name: Apply beta39 patch
+        run: python3 tools/patch_beta39.py
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add source/main.cpp Makefile
+          git commit -m "Improve voltage scan and trim redundant final tests" || exit 0
+          git push

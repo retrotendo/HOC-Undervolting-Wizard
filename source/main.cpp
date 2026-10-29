@@ -112,6 +112,7 @@ struct WizardState {
     int ramPairRetryMode = 0;
     bool recoveryNeeded = false;
     bool warningBelow590Seen = false;
+    bool limitNoticePending = false;
 
     // Hardware-guided VDDQ baseline.
     int dramId = -1;
@@ -515,6 +516,7 @@ bool saveState() {
     f << "ramPairRetryMode=" << g.ramPairRetryMode << "\n";
     f << "recoveryNeeded=" << (g.recoveryNeeded ? 1 : 0) << "\n";
     f << "warningBelow590Seen=" << (g.warningBelow590Seen ? 1 : 0) << "\n";
+    f << "limitNoticePending=" << (g.limitNoticePending ? 1 : 0) << "\n";
     f << "dramId=" << g.dramId << "\n";
     f << "consoleType=" << g.consoleType << "\n";
     f << "vddqStartMv=" << g.vddqStartMv << "\n";
@@ -560,6 +562,7 @@ void assignKV(const std::string& key, const std::string& value) {
     else if (key == "ramPairRetryMode") g.ramPairRetryMode = v;
     else if (key == "recoveryNeeded") g.recoveryNeeded = (v != 0);
     else if (key == "warningBelow590Seen") g.warningBelow590Seen = (v != 0);
+    else if (key == "limitNoticePending") g.limitNoticePending = (v != 0);
     else if (key == "dramId") g.dramId = v;
     else if (key == "consoleType") g.consoleType = v;
     else if (key == "vddqStartMv") g.vddqStartMv = v;
@@ -939,6 +942,7 @@ void resetPreparationBaselineState() {
     g.highUvTest = STOCK_HIGH_UV + 1;
     g.recoveryNeeded = false;
     g.stageReadyAfterBoot = false;
+    g.limitNoticePending = false;
     g.pendingConfigMask = Config_None;
 }
 
@@ -1060,9 +1064,12 @@ void continueFromPreparationBaseline() {
     // Low UV candidate, which will get its own normal set -> reboot -> 1 min test.
     g.rebootPending = false;
     g.pendingConfigMask = Config_None;
+    g.limitNoticePending = false;
     if (g.lowUvGood >= LOW_UV_MAX) {
-        g.stage = Stage::LowUvLong;
+        g.stage = Stage::LowUvQuick;
+        g.lowUvTest = g.lowUvGood;
         g.stageReadyAfterBoot = true;
+        g.limitNoticePending = true;
     } else {
         g.stage = Stage::LowUvQuick;
         g.lowUvTest = g.lowUvGood + 1;
@@ -1808,19 +1815,51 @@ void renderValidationObjective(int& row) {
 void renderTestStage() {
     title();
 
-    if (g.stage == Stage::LowVminQuick &&
-        g.stageReadyAfterBoot &&
-        g.lowVminGood == LOW_VMIN_MIN_MV &&
-        g.lowVminTest == LOW_VMIN_MIN_MV) {
-        uiPrintf(5, "Objective:");
-        uiPrintf(6, "Current Low VMIN : %d mV", g.lowVminGood);
-        uiPrintf(8, "570 mV is the minimum recommended");
-        uiPrintf(9, "value used by this Wizard.");
-        uiPrintf(11, "Going lower is not recommended.");
-        uiPrintf(12, "Very low VMIN values may cause");
-        uiPrintf(13, "Sleep / Standby / Wake problems.");
-        uiPrintf(15, "No lower value will be tested.");
-        uiPrintf(18, "A : Confirm 570 mV and continue");
+    if (g.limitNoticePending) {
+        uiPrintf(5, "\x1b[33mWizard search limit reached.\x1b[0m");
+        switch (g.stage) {
+            case Stage::LowUvQuick:
+                uiPrintf(7, "Current Low UV : %d", g.lowUvGood);
+                uiPrintf(8, "Wizard maximum : %d", LOW_UV_MAX);
+                uiPrintf(10, "No higher Low UV level will be tested.");
+                uiPrintf(13, "A : Confirm Low UV %d and continue", g.lowUvGood);
+                break;
+            case Stage::LowVminQuick:
+                uiPrintf(7, "Current Low VMIN : %d mV", g.lowVminGood);
+                uiPrintf(8, "Wizard minimum   : %d mV", LOW_VMIN_MIN_MV);
+                uiPrintf(10, "Going lower is not recommended.");
+                uiPrintf(11, "Very low VMIN values may cause");
+                uiPrintf(12, "Sleep / Standby / Wake problems.");
+                uiPrintf(14, "No lower value will be tested.");
+                uiPrintf(17, "A : Confirm %d mV and continue", g.lowVminGood);
+                break;
+            case Stage::VddqQuick:
+                uiPrintf(7, "Current VDDQ    : %d mV", g.vddqGood);
+                uiPrintf(8, "Wizard minimum  : %d mV", VDDQ_MIN_MV);
+                uiPrintf(10, "The Wizard will not search below");
+                uiPrintf(11, "%d mV VDDQ.", VDDQ_MIN_MV);
+                uiPrintf(13, "No lower value will be tested.");
+                uiPrintf(16, "A : Confirm %d mV and continue", g.vddqGood);
+                break;
+            case Stage::Vdd2Quick:
+                uiPrintf(7, "Current VDD2   : %s", formatVdd2(g.vdd2GoodUv).c_str());
+                uiPrintf(8, "Wizard minimum : %s", formatVdd2(VDD2_MIN_UV).c_str());
+                uiPrintf(10, "The Wizard will not search below");
+                uiPrintf(11, "%s VDD2.", formatVdd2(VDD2_MIN_UV).c_str());
+                uiPrintf(13, "No lower value will be tested.");
+                uiPrintf(16, "A : Confirm %s and continue", formatVdd2(g.vdd2GoodUv).c_str());
+                break;
+            case Stage::HighUvQuick:
+                uiPrintf(7, "Current High UV : %d", g.highUvGood);
+                uiPrintf(8, "Wizard maximum  : %d", HIGH_UV_MAX);
+                uiPrintf(10, "No higher High UV level will be tested.");
+                uiPrintf(13, "A : Confirm High UV %d and continue", g.highUvGood);
+                break;
+            default:
+                uiPrintf(7, "The configured Wizard limit was reached.");
+                uiPrintf(10, "A : Confirm and continue");
+                break;
+        }
         uiPrintf(19, "B : Exit");
         printResetHint(19);
         return;
@@ -2106,18 +2145,91 @@ void restartVminSweep(bool recovery) {
 void enterLowVminSearchOrMinimumNotice() {
     clearVminSweepData();
     g.pendingConfigMask = Config_None;
-    if (g.lowVminGood == LOW_VMIN_MIN_MV) {
+    g.limitNoticePending = false;
+    if (g.lowVminGood <= LOW_VMIN_MIN_MV) {
         g.stage = Stage::LowVminQuick;
-        g.lowVminTest = LOW_VMIN_MIN_MV;
+        g.lowVminTest = g.lowVminGood;
         g.stageReadyAfterBoot = true;
-    } else if (g.lowVminGood > LOW_VMIN_MIN_MV) {
+        g.limitNoticePending = true;
+    } else {
         g.stage = Stage::LowVminQuick;
         g.lowVminTest = std::max(LOW_VMIN_MIN_MV, g.lowVminGood - LOW_VMIN_STEP_MV);
         g.stageReadyAfterBoot = false;
-    } else {
-        restartVminSweep(false);
-        g.stageReadyAfterBoot = true;
     }
+}
+
+void enterVddqSearchOrMinimumNotice() {
+    g.pendingConfigMask = Config_None;
+    g.limitNoticePending = false;
+    g.stage = Stage::VddqQuick;
+    if (g.vddqGood <= VDDQ_MIN_MV) {
+        g.vddqTest = g.vddqGood;
+        g.stageReadyAfterBoot = true;
+        g.limitNoticePending = true;
+    } else {
+        g.vddqTest = g.vddqGood - VDDQ_STEP_MV;
+        g.stageReadyAfterBoot = false;
+    }
+}
+
+void enterVdd2SearchOrMinimumNotice() {
+    g.pendingConfigMask = Config_None;
+    g.limitNoticePending = false;
+    g.stage = Stage::Vdd2Quick;
+    if (g.vdd2GoodUv <= VDD2_MIN_UV) {
+        g.vdd2TestUv = g.vdd2GoodUv;
+        g.stageReadyAfterBoot = true;
+        g.limitNoticePending = true;
+    } else {
+        g.vdd2TestUv = g.vdd2GoodUv - VDD2_STEP_UV;
+        g.stageReadyAfterBoot = false;
+    }
+}
+
+void enterHighUvSearchOrMaximumNotice() {
+    g.pendingConfigMask = Config_None;
+    g.limitNoticePending = false;
+    g.stage = Stage::HighUvQuick;
+    if (g.highUvGood >= HIGH_UV_MAX) {
+        g.highUvTest = g.highUvGood;
+        g.stageReadyAfterBoot = true;
+        g.limitNoticePending = true;
+    } else {
+        g.highUvTest = g.highUvGood + 1;
+        g.stageReadyAfterBoot = false;
+    }
+}
+
+void confirmWizardLimitAndContinue() {
+    g.limitNoticePending = false;
+    g.pendingConfigMask = Config_None;
+    switch (g.stage) {
+        case Stage::LowUvQuick:
+            g.stage = Stage::LowUvLong;
+            g.stageReadyAfterBoot = true;
+            break;
+        case Stage::LowVminQuick:
+            restartVminSweep(false);
+            g.stageReadyAfterBoot = true;
+            g.pendingConfigMask = Config_None;
+            break;
+        case Stage::VddqQuick:
+            g.stage = Stage::VddqLong;
+            g.stageReadyAfterBoot = true;
+            break;
+        case Stage::Vdd2Quick:
+            g.ramPairRetryMode = 0;
+            g.stage = Stage::Vdd2Long;
+            g.stageReadyAfterBoot = true;
+            break;
+        case Stage::HighUvQuick:
+            g.stage = Stage::BoostCpuRamValidate;
+            g.stageReadyAfterBoot = true;
+            break;
+        default:
+            break;
+    }
+    saveState();
 }
 
 
@@ -2135,11 +2247,12 @@ void handlePass() {
             // Boot-stable candidate confirmed by the post-reboot check.
             g.lowUvGood = g.lowUvTest;
             if (g.lowUvTest >= LOW_UV_MAX) {
-                g.stage = Stage::LowUvLong;
                 g.stageReadyAfterBoot = true;
+                g.limitNoticePending = true;
             } else {
                 ++g.lowUvTest;
                 g.stageReadyAfterBoot = false;
+                g.limitNoticePending = false;
             }
             break;
         case Stage::LowUvValidateQuick:
@@ -2153,12 +2266,13 @@ void handlePass() {
         case Stage::LowVminQuick:
             g.lowVminGood = g.lowVminTest;
             if (g.lowVminTest <= LOW_VMIN_MIN_MV) {
-                restartVminSweep(false);
-                g.stageReadyAfterBoot = true; // 570 was already booted for quick test
-                return;
+                g.stageReadyAfterBoot = true;
+                g.limitNoticePending = true;
+            } else {
+                g.lowVminTest -= LOW_VMIN_STEP_MV;
+                g.stageReadyAfterBoot = false;
+                g.limitNoticePending = false;
             }
-            g.lowVminTest -= LOW_VMIN_STEP_MV;
-            g.stageReadyAfterBoot = false;
             break;
         case Stage::LowVminLong: g.stage = Stage::LowVminSweep612; break;
         case Stage::LowVminSweep612: g.stage = Stage::LowVminSweep714; break;
@@ -2179,46 +2293,33 @@ void handlePass() {
         case Stage::LowVminPlateauValidate:
             ++g.vminValidateIndex;
             if (g.vminValidateIndex >= g.vminValidateCount) {
-                if (g.vddqGood <= VDDQ_MIN_MV) {
-                    g.stage = Stage::VddqLong;
-                    g.stageReadyAfterBoot = true;
-                } else {
-                    g.stage = Stage::VddqQuick;
-                    g.vddqTest = g.vddqGood - VDDQ_STEP_MV;
-                    g.stageReadyAfterBoot = false;
-                }
+                enterVddqSearchOrMinimumNotice();
             }
             break;
         case Stage::VddqQuick:
             g.vddqGood = g.vddqTest;
             if (g.vddqTest <= VDDQ_MIN_MV) {
-                g.stage = Stage::VddqLong;
                 g.stageReadyAfterBoot = true;
+                g.limitNoticePending = true;
             } else {
                 g.vddqTest -= VDDQ_STEP_MV;
                 g.stageReadyAfterBoot = false;
+                g.limitNoticePending = false;
             }
             break;
         case Stage::VddqLong:
             g.recoveryNeeded = false;
-            if (g.vdd2GoodUv <= VDD2_MIN_UV) {
-                g.stage = Stage::Vdd2Long;
-                g.stageReadyAfterBoot = true;
-            } else {
-                g.stage = Stage::Vdd2Quick;
-                g.vdd2TestUv = g.vdd2GoodUv - VDD2_STEP_UV;
-                g.stageReadyAfterBoot = false;
-            }
+            enterVdd2SearchOrMinimumNotice();
             break;
         case Stage::Vdd2Quick:
             g.vdd2GoodUv = g.vdd2TestUv;
             if (g.vdd2TestUv <= VDD2_MIN_UV) {
-                g.ramPairRetryMode = 0;
-                g.stage = Stage::Vdd2Long;
                 g.stageReadyAfterBoot = true;
+                g.limitNoticePending = true;
             } else {
                 g.vdd2TestUv -= VDD2_STEP_UV;
                 g.stageReadyAfterBoot = false;
+                g.limitNoticePending = false;
             }
             break;
         case Stage::Vdd2Long:
@@ -2235,11 +2336,12 @@ void handlePass() {
         case Stage::HighUvQuick:
             g.highUvGood = g.highUvTest;
             if (g.highUvTest >= HIGH_UV_MAX) {
-                g.stage = Stage::BoostCpuRamValidate;
                 g.stageReadyAfterBoot = true;
+                g.limitNoticePending = true;
             } else {
                 ++g.highUvTest;
                 g.stageReadyAfterBoot = false;
+                g.limitNoticePending = false;
             }
             break;
         case Stage::HighUvLong:
@@ -2249,14 +2351,7 @@ void handlePass() {
             g.stage = Stage::BoostCpuRamValidate;
             break;
         case Stage::NormalMatrixValidate:
-            if (g.highUvGood >= HIGH_UV_MAX) {
-                g.stage = Stage::BoostCpuRamValidate;
-                g.stageReadyAfterBoot = true;
-            } else {
-                g.stage = Stage::HighUvQuick;
-                g.highUvTest = g.highUvGood + 1;
-                g.stageReadyAfterBoot = false;
-            }
+            enterHighUvSearchOrMaximumNotice();
             break;
         case Stage::BoostCpuRamValidate: g.stage = Stage::BoostCpuMemValidate; break;
         case Stage::NormalMemValidate:
@@ -2277,6 +2372,7 @@ void handlePass() {
 
 void handleFail(bool didNotBoot) {
     g.stageReadyAfterBoot = false;
+    g.limitNoticePending = false;
     switch (g.stage) {
         case Stage::Preparation:
             g.recoveryNeeded = didNotBoot;
@@ -2531,14 +2627,7 @@ void skipAutomaticRegionValidation(bool forLowUv) {
     if (forLowUv) {
         enterLowVminSearchOrMinimumNotice();
     } else {
-        if (g.vddqGood <= VDDQ_MIN_MV) {
-            g.stage = Stage::VddqLong;
-            g.stageReadyAfterBoot = true;
-        } else {
-            g.stage = Stage::VddqQuick;
-            g.vddqTest = g.vddqGood - VDDQ_STEP_MV;
-            g.stageReadyAfterBoot = false;
-        }
+        enterVddqSearchOrMinimumNotice();
     }
     g.pendingConfigMask = Config_None;
     saveState();
@@ -2640,14 +2729,7 @@ void runAutomaticRegionValidation(bool forLowUv) {
             g_resultAction = "All CPU voltage regions passed. CPU Low UV is confirmed; continuing to Low VMIN boot search.";
         } else {
             clearVminSweepData();
-            if (g.vddqGood <= VDDQ_MIN_MV) {
-                g.stage = Stage::VddqLong;
-                g.stageReadyAfterBoot = true;
-            } else {
-                g.stage = Stage::VddqQuick;
-                g.vddqTest = g.vddqGood - VDDQ_STEP_MV;
-                g.stageReadyAfterBoot = false;
-            }
+            enterVddqSearchOrMinimumNotice();
             g_resultAction = "All CPU voltage regions passed. CPU Low VMIN is confirmed; continuing to RAM tuning.";
         }
         g.pendingConfigMask = Config_None;
@@ -3169,18 +3251,13 @@ int main(int argc, char** argv) {
                 handleFail(false);
                 redraw = true;
             }
+        } else if (g.limitNoticePending) {
+            if (k & HidNpadButton_A) {
+                confirmWizardLimitAndContinue();
+                redraw = true;
+            }
         } else if (k & HidNpadButton_A) {
-            const bool lowVminMinimumNotice =
-                g.stage == Stage::LowVminQuick &&
-                g.stageReadyAfterBoot &&
-                g.lowVminGood == LOW_VMIN_MIN_MV &&
-                g.lowVminTest == LOW_VMIN_MIN_MV;
-            if (lowVminMinimumNotice) {
-                restartVminSweep(false);
-                g.stageReadyAfterBoot = true;
-                saveState();
-            } else {
-                const bool bootSearch = g.stage == Stage::LowUvQuick || g.stage == Stage::LowVminQuick;
+            const bool bootSearch = g.stage == Stage::LowUvQuick || g.stage == Stage::LowVminQuick;
                 const u32 cfgMask = bootSearch ? defaultConfigMaskForStage(g.stage) : activeConfigMask();
                 if (cfgMask != Config_None) {
                 if (verifyPersistentSettings(cfgMask)) {
@@ -3205,7 +3282,6 @@ int main(int argc, char** argv) {
                 int seconds = 0;
                 if (testPlan(g.stage, kind, seconds)) runCurrentTest();
                 else handlePass();
-            }
             }
             redraw = true;
         }

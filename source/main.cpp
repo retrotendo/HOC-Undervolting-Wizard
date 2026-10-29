@@ -3199,6 +3199,13 @@ int main(int argc, char** argv) {
             if (captureCurrentSettingsBaseline()) continueFromPreparationBaseline();
             else g_configPrompt = true;
             redraw = true;
+        } else if (g.limitNoticePending) {
+            // A limit page is informational/confirmational only. Do not let
+            // Y / + / X fall through into normal search actions.
+            if (k & HidNpadButton_A) {
+                confirmWizardLimitAndContinue();
+                redraw = true;
+            }
         } else if ((k & HidNpadButton_Y) && g.stage != Stage::Preparation) {
             const u32 cfgMask = activeConfigMask();
             if (cfgMask & (Config_LowUv | Config_LowVmin)) {
@@ -3249,11 +3256,6 @@ int main(int argc, char** argv) {
         } else if (k & HidNpadButton_X) {
             if (!isVminSweepStage(g.stage) && g.stage != Stage::Preparation && g.stage != Stage::Complete) {
                 handleFail(false);
-                redraw = true;
-            }
-        } else if (g.limitNoticePending) {
-            if (k & HidNpadButton_A) {
-                confirmWizardLimitAndContinue();
                 redraw = true;
             }
         } else if (k & HidNpadButton_A) {

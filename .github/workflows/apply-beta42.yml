@@ -17,6 +17,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: beta42-limit-notices
+      - name: Fix beta42 patch helper
+        run: python3 tools/fix_beta42_patch.py
       - name: Apply beta42 patch
         run: python3 tools/patch_beta42.py
       - name: Commit patch
@@ -26,5 +28,3 @@ jobs:
           git add source/main.cpp Makefile
           git commit -m 'Unify Wizard limit notices across all searches'
           git push origin HEAD:beta42-limit-notices
-
-# beta42 retry

@@ -244,20 +244,20 @@ const char* stageName(Stage s) {
         case Stage::LowVminFinalLong: return "CPU Low VMIN - Dynamic 1 Hour Validation";
         case Stage::LowVminPlateauValidate: return "CPU Low VMIN - Region Validation";
         case Stage::VddqQuick: return "VDDQ - Quick Search";
-        case Stage::VddqLong: return "VDDQ - 1 Hour Validation";
+        case Stage::VddqLong: return "VDDQ - 30 Minute Validation";
         case Stage::Vdd2Quick: return "VDD2 - Quick Search";
-        case Stage::Vdd2Long: return "VDD2 - 1 Hour Validation";
+        case Stage::Vdd2Long: return "RAM Rails - Final Pair Validation";
         case Stage::RamBoostValidate: return "RAM Rails - Boost Combined Validation";
         case Stage::Ram1331Validate: return "RAM - Normal Handheld Validation";
         case Stage::HighUvQuick: return "CPU High UV - Quick Search";
         case Stage::HighUvLong: return "CPU High UV - 1 Hour Validation";
-        case Stage::BoostCpuRamValidate: return "Boost CPU + RAM Validation";
+        case Stage::BoostCpuRamValidate: return "High UV - CPU Memtester";
         case Stage::NormalMatrixValidate: return "Handheld CPU + RAM Validation";
         case Stage::NormalMemValidate: return "Final Normal - RAM";
         case Stage::NormalGpuValidate: return "Final Normal - GPU";
         case Stage::BoostMatrixValidate: return "Final Boost - CPU";
         case Stage::BoostMemValidate: return "Final Boost - RAM";
-        case Stage::BoostCpuMemValidate: return "Final Boost - CPU + RAM";
+        case Stage::BoostCpuMemValidate: return "High UV + RAM Combined";
         case Stage::RealWorldValidate: return "Final Real-World Test";
         case Stage::Complete: return "Complete";
     }
@@ -276,6 +276,7 @@ bool testPlan(Stage s, stress::Kind& kind, int& seconds) {
         case Stage::Vdd2Quick:
             kind = stress::Kind::Ram; seconds = 60; return true;
         case Stage::VddqLong:
+            kind = stress::Kind::Ram; seconds = 1800; return true;
         case Stage::Vdd2Long:
         case Stage::RamBoostValidate:
         case Stage::Ram1331Validate:
@@ -1214,20 +1215,20 @@ const char* compactStepName(Stage s) {
         case Stage::LowVminFinalLong: return "CPU Low VMIN - Validate";
         case Stage::LowVminPlateauValidate: return "CPU Low VMIN - Plateau";
         case Stage::VddqQuick: return "RAM VDDQ";
-        case Stage::VddqLong: return "RAM VDDQ - Validate";
+        case Stage::VddqLong: return "RAM VDDQ - 30 min Validate";
         case Stage::Vdd2Quick: return "RAM VDD2";
-        case Stage::Vdd2Long: return "RAM VDD2 - Validate";
+        case Stage::Vdd2Long: return "RAM Rails - Final Pair";
         case Stage::RamBoostValidate: return "RAM Rails - Boost";
         case Stage::Ram1331Validate: return "RAM Rails - Handheld";
         case Stage::HighUvQuick: return "CPU High UV";
         case Stage::HighUvLong: return "CPU High UV - Validate";
-        case Stage::BoostCpuRamValidate: return "Boost CPU + RAM";
+        case Stage::BoostCpuRamValidate: return "High UV - CPU Memtester";
         case Stage::NormalMatrixValidate: return "Handheld CPU + RAM";
         case Stage::NormalMemValidate: return "Final Handheld - RAM";
         case Stage::NormalGpuValidate: return "Final Handheld - GPU";
         case Stage::BoostMatrixValidate: return "Final Boost - CPU";
         case Stage::BoostMemValidate: return "Final Boost - RAM";
-        case Stage::BoostCpuMemValidate: return "Final Boost - CPU + RAM";
+        case Stage::BoostCpuMemValidate: return "High UV + RAM Combined";
         case Stage::RealWorldValidate: return "Real World";
         case Stage::Complete: return "Complete";
     }
@@ -1733,13 +1734,18 @@ void renderValidationObjective(int& row) {
             uiPrintf(row++, "Current VDDQ : %s", haveCurrent ? formatMv((int)(current.vddqUv / 1000U)).c_str() : "unavailable");
             break;
         }
-        case Stage::Vdd2Quick:
-        case Stage::Vdd2Long: {
-            const int value = g.stage == Stage::Vdd2Quick ? g.vdd2TestUv : g.vdd2GoodUv;
-            uiPrintf(row++, "VDD2 %s will be tested now.", formatVdd2(value).c_str());
+        case Stage::Vdd2Quick: {
+            uiPrintf(row++, "VDD2 %s will be tested now.", formatVdd2(g.vdd2TestUv).c_str());
             uiPrintf(row++, "Current VDD2 : %s", haveCurrent ? formatVdd2((int)current.vdd2Uv).c_str() : "unavailable");
             break;
         }
+        case Stage::Vdd2Long:
+            uiPrintf(row++, "Final VDDQ + VDD2 pair will be tested now.");
+            if (haveCurrent) {
+                uiPrintf(row++, "Current VDDQ : %s", formatMv((int)(current.vddqUv / 1000U)).c_str());
+                uiPrintf(row++, "Current VDD2 : %s", formatVdd2((int)current.vdd2Uv).c_str());
+            }
+            break;
         case Stage::HighUvQuick:
         case Stage::HighUvLong: {
             const int value = g.stage == Stage::HighUvQuick ? g.highUvTest : g.highUvGood;
@@ -1765,8 +1771,8 @@ void renderValidationObjective(int& row) {
             }
             break;
         case Stage::BoostCpuRamValidate:
-            uiPrintf(row++, "Final High UV + RAM Boost stability");
-            uiPrintf(row++, "will be tested now at 1785 / 1600.");
+            uiPrintf(row++, "Final High UV CPU-memtester");
+            uiPrintf(row++, "will run at 1785 / 76.8 / 1600.");
             break;
         case Stage::NormalMatrixValidate:
             uiPrintf(row++, "Critical Low CPU + RAM stability");
@@ -1785,7 +1791,8 @@ void renderValidationObjective(int& row) {
             uiPrintf(row++, "Final Boost RAM stability will be tested now.");
             break;
         case Stage::BoostCpuMemValidate:
-            uiPrintf(row++, "Final Boost CPU + RAM stability will be tested now.");
+            uiPrintf(row++, "High UV + high RAM combined stability");
+            uiPrintf(row++, "will run at 1785 / 76.8 / 1600.");
             break;
         case Stage::LowVminFinalLong:
             uiPrintf(row++, "Low VMIN stability will be tested now.");
@@ -1895,7 +1902,7 @@ void renderTestStage() {
     if (hasTest) {
         renderValidationObjective(row);
         uiPrintf(row++, "Test:");
-        uiPrintf(row++, "%s - %s", seconds == 60 ? "1 min" : "1 hour", compactTestName(kind));
+        uiPrintf(row++, "%s - %s", seconds == 60 ? "1 min" : (seconds == 1800 ? "30 min" : "1 hour"), compactTestName(kind));
         footerTest(row + 1);
     }
 }
@@ -1940,7 +1947,7 @@ void renderInterruptedPrompt() {
     std::printf("The previous built-in test was marked RUNNING but never finished.\n\n");
     std::printf("Stage: %s\n", stageName(static_cast<Stage>(g.testStage)));
     std::printf("Test : %s\n", stress::kindName(static_cast<stress::Kind>(g.testKind)));
-    std::printf("Time : %s\n\n", g.testDurationSec == 60 ? "1 minute" : "1 hour");
+    std::printf("Time : %s\n\n", g.testDurationSec == 60 ? "1 minute" : (g.testDurationSec == 1800 ? "30 minutes" : "1 hour"));
     std::printf("Did the console freeze, crash or reboot during the test?\n\n");
     std::printf("\x1b[31m[A] YES - count as FAIL\x1b[0m\n");
     std::printf("[X] NO - test was interrupted manually; run it again\n");
@@ -2178,6 +2185,7 @@ void handlePass() {
         case Stage::Vdd2Quick:
             g.vdd2GoodUv = g.vdd2TestUv;
             if (g.vdd2TestUv <= VDD2_MIN_UV) {
+                g.ramPairRetryMode = 0;
                 g.stage = Stage::Vdd2Long;
                 g.stageReadyAfterBoot = true;
             } else {
@@ -2222,7 +2230,7 @@ void handlePass() {
                 g.stageReadyAfterBoot = false;
             }
             break;
-        case Stage::BoostCpuRamValidate: g.stage = Stage::RealWorldValidate; break;
+        case Stage::BoostCpuRamValidate: g.stage = Stage::BoostCpuMemValidate; break;
         case Stage::NormalMemValidate:
         case Stage::NormalGpuValidate:
         case Stage::BoostMatrixValidate:
@@ -2298,12 +2306,10 @@ void handleFail(bool didNotBoot) {
         case Stage::Vdd2Quick:
             g.stage = Stage::Vdd2Long;
             g.recoveryNeeded = didNotBoot;
+            g.ramPairRetryMode = 0;
             g.pendingConfigMask = Config_Vdd2;
             break;
         case Stage::Vdd2Long:
-            g.vdd2GoodUv += VDD2_STEP_UV;
-            g.pendingConfigMask = Config_Vdd2;
-            break;
         case Stage::RamBoostValidate:
             if (g.ramPairRetryMode == 0) {
                 g.vddqGood += VDDQ_STEP_MV;
@@ -2346,8 +2352,12 @@ void handleFail(bool didNotBoot) {
             g.pendingConfigMask = Config_Vddq;
             break;
         case Stage::BoostMatrixValidate:
+            if (g.highUvGood > 0) --g.highUvGood;
+            g.pendingConfigMask = Config_HighUv;
+            break;
         case Stage::BoostCpuMemValidate:
             if (g.highUvGood > 0) --g.highUvGood;
+            g.stage = Stage::BoostCpuRamValidate;
             g.pendingConfigMask = Config_HighUv;
             break;
         case Stage::NormalGpuValidate:
@@ -2736,6 +2746,58 @@ int main(int argc, char** argv) {
     }
 
     if (updater::startupCheckAndPrompt(pad, argc, argv)) {
+        consoleExit(nullptr);
+        return 0;
+    }
+
+    bool riskAccepted = false;
+    while (appletMainLoop() && !riskAccepted) {
+        padUpdate(&pad);
+        const u64 k = padGetButtonsDown(&pad);
+        consoleClear();
+        std::printf("[1;1H[31mHOC Undervolting Wizard - WARNING[0m
+");
+        std::printf("------------------------------------------------------------
+
+");
+        std::printf("[1mUSE AT YOUR OWN RISK[0m
+
+");
+        std::printf("This Wizard changes CPU/RAM voltage settings and runs
+");
+        std::printf("stability tests. Unstable settings can cause crashes,
+");
+        std::printf("boot failures, data/save corruption or data loss.
+
+");
+        std::printf("In extreme cases, hardware damage may also be possible.
+
+");
+        std::printf("The author and contributors provide no warranty and accept
+");
+        std::printf("no liability for data loss, software damage, hardware
+");
+        std::printf("damage or any other consequences of using this Wizard.
+
+");
+        std::printf("By continuing, you accept all risk and responsibility.
+
+");
+        std::printf("[A] I understand - Continue
+");
+        std::printf("[B] Exit
+");
+        consoleUpdate(nullptr);
+
+        if (k & HidNpadButton_A) riskAccepted = true;
+        else if (k & HidNpadButton_B) {
+            consoleExit(nullptr);
+            return 0;
+        }
+        svcSleepThread(20'000'000);
+    }
+
+    if (!riskAccepted) {
         consoleExit(nullptr);
         return 0;
     }

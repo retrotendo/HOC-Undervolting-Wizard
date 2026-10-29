@@ -1,5 +1,4 @@
 from pathlib import Path
-import re
 
 p = Path('source/main.cpp')
 s = p.read_text()
@@ -58,12 +57,10 @@ rep('''        case Stage::HighUvQuick:\n            g.highUvGood = g.highUvTest
 rep('''            if (g.vddqGood <= VDDQ_MIN_MV) {\n                g.stage = Stage::VddqLong;\n                g.stageReadyAfterBoot = true;\n            } else {\n                g.stage = Stage::VddqQuick;\n                g.vddqTest = g.vddqGood - VDDQ_STEP_MV;\n                g.stageReadyAfterBoot = false;\n            }''',
     '''            enterVddqSearchOrMinimumNotice();''',
     'plateau to VDDQ helper', 1)
-
-# Same block occurs in skipAutomaticRegionValidation and automatic validation.
 rep('''        if (g.vddqGood <= VDDQ_MIN_MV) {\n            g.stage = Stage::VddqLong;\n            g.stageReadyAfterBoot = true;\n        } else {\n            g.stage = Stage::VddqQuick;\n            g.vddqTest = g.vddqGood - VDDQ_STEP_MV;\n            g.stageReadyAfterBoot = false;\n        }''',
     '''        enterVddqSearchOrMinimumNotice();''',
     'skip to VDDQ helper', 1)
-rep('''            if (g.vddqGood <= VDDQ_MIN_MV) {\n                g.stage = Stage::VddqLong;\n                g.stageReadyAfterBoot = true;\n            } else {\n                g.stage = Stage::VddqQuick;\n                g.vddqTest = g.vddqGood - VDDQ_STEP_MV;\n                g.stageReadyAfterBoot = false;\n            }''',
+rep('''            clearVminSweepData();\n            if (g.vddqGood <= VDDQ_MIN_MV) {\n                g.stage = Stage::VddqLong;\n                g.stageReadyAfterBoot = true;\n            } else {\n                g.stage = Stage::VddqQuick;\n                g.vddqTest = g.vddqGood - VDDQ_STEP_MV;\n                g.stageReadyAfterBoot = false;\n            }''',
     '''            enterVddqSearchOrMinimumNotice();''',
     'auto validate to VDDQ helper', 1)
 

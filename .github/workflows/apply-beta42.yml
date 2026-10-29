@@ -1,0 +1,28 @@
+name: Apply beta42 limit notices
+
+on:
+  push:
+    branches:
+      - beta42-limit-notices
+    paths:
+      - '.github/workflows/apply-beta42.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: beta42-limit-notices
+      - name: Apply beta42 patch
+        run: python3 tools/patch_beta42.py
+      - name: Commit patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add source/main.cpp Makefile
+          git commit -m 'Unify Wizard limit notices across all searches'
+          git push origin HEAD:beta42-limit-notices

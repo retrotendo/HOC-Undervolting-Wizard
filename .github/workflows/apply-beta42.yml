@@ -26,3 +26,5 @@ jobs:
           git add source/main.cpp Makefile
           git commit -m 'Unify Wizard limit notices across all searches'
           git push origin HEAD:beta42-limit-notices
+
+# beta42 retry

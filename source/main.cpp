@@ -1808,6 +1808,24 @@ void renderValidationObjective(int& row) {
 void renderTestStage() {
     title();
 
+    if (g.stage == Stage::LowVminQuick &&
+        g.stageReadyAfterBoot &&
+        g.lowVminGood == LOW_VMIN_MIN_MV &&
+        g.lowVminTest == LOW_VMIN_MIN_MV) {
+        uiPrintf(5, "Objective:");
+        uiPrintf(6, "Current Low VMIN : %d mV", g.lowVminGood);
+        uiPrintf(8, "570 mV is the minimum recommended");
+        uiPrintf(9, "value used by this Wizard.");
+        uiPrintf(11, "Going lower is not recommended.");
+        uiPrintf(12, "Very low VMIN values may cause");
+        uiPrintf(13, "Sleep / Standby / Wake problems.");
+        uiPrintf(15, "No lower value will be tested.");
+        uiPrintf(18, "A : Confirm 570 mV and continue");
+        uiPrintf(19, "B : Exit");
+        printResetHint(19);
+        return;
+    }
+
     const u32 configMask = activeConfigMask();
     if (configMask != Config_None) {
         int row = 5;
@@ -2085,6 +2103,23 @@ void restartVminSweep(bool recovery) {
     saveState();
 }
 
+void enterLowVminSearchOrMinimumNotice() {
+    clearVminSweepData();
+    g.pendingConfigMask = Config_None;
+    if (g.lowVminGood == LOW_VMIN_MIN_MV) {
+        g.stage = Stage::LowVminQuick;
+        g.lowVminTest = LOW_VMIN_MIN_MV;
+        g.stageReadyAfterBoot = true;
+    } else if (g.lowVminGood > LOW_VMIN_MIN_MV) {
+        g.stage = Stage::LowVminQuick;
+        g.lowVminTest = std::max(LOW_VMIN_MIN_MV, g.lowVminGood - LOW_VMIN_STEP_MV);
+        g.stageReadyAfterBoot = false;
+    } else {
+        restartVminSweep(false);
+        g.stageReadyAfterBoot = true;
+    }
+}
+
 
 void handlePass() {
     switch (g.stage) {
@@ -2113,14 +2148,7 @@ void handlePass() {
             break;
         case Stage::LowUvLong:
             g.recoveryNeeded = false;
-            if (g.lowVminGood <= LOW_VMIN_MIN_MV) {
-                restartVminSweep(false);
-                g.stageReadyAfterBoot = true;
-            } else {
-                g.stage = Stage::LowVminQuick;
-                g.lowVminTest = g.lowVminGood - LOW_VMIN_STEP_MV;
-                g.stageReadyAfterBoot = false;
-            }
+            enterLowVminSearchOrMinimumNotice();
             break;
         case Stage::LowVminQuick:
             g.lowVminGood = g.lowVminTest;
@@ -2501,14 +2529,7 @@ void runAutomaticLowUvScan() {
 void skipAutomaticRegionValidation(bool forLowUv) {
     clearVminSweepData();
     if (forLowUv) {
-        if (g.lowVminGood <= LOW_VMIN_MIN_MV) {
-            g.stage = Stage::LowVminLong;
-            g.stageReadyAfterBoot = true;
-        } else {
-            g.stage = Stage::LowVminQuick;
-            g.lowVminTest = std::max(LOW_VMIN_MIN_MV, g.lowVminGood - LOW_VMIN_STEP_MV);
-            g.stageReadyAfterBoot = false;
-        }
+        enterLowVminSearchOrMinimumNotice();
     } else {
         if (g.vddqGood <= VDDQ_MIN_MV) {
             g.stage = Stage::VddqLong;
@@ -2615,15 +2636,7 @@ void runAutomaticRegionValidation(bool forLowUv) {
     if (!failed) {
         g_lastResult.outcome = stress::Outcome::Pass;
         if (forLowUv) {
-            clearVminSweepData();
-            if (g.lowVminGood <= LOW_VMIN_MIN_MV) {
-                g.stage = Stage::LowVminLong;
-                g.stageReadyAfterBoot = true;
-            } else {
-                g.stage = Stage::LowVminQuick;
-                g.lowVminTest = std::max(LOW_VMIN_MIN_MV, g.lowVminGood - LOW_VMIN_STEP_MV);
-                g.stageReadyAfterBoot = false;
-            }
+            enterLowVminSearchOrMinimumNotice();
             g_resultAction = "All CPU voltage regions passed. CPU Low UV is confirmed; continuing to Low VMIN boot search.";
         } else {
             clearVminSweepData();
@@ -3157,9 +3170,19 @@ int main(int argc, char** argv) {
                 redraw = true;
             }
         } else if (k & HidNpadButton_A) {
-            const bool bootSearch = g.stage == Stage::LowUvQuick || g.stage == Stage::LowVminQuick;
-            const u32 cfgMask = bootSearch ? defaultConfigMaskForStage(g.stage) : activeConfigMask();
-            if (cfgMask != Config_None) {
+            const bool lowVminMinimumNotice =
+                g.stage == Stage::LowVminQuick &&
+                g.stageReadyAfterBoot &&
+                g.lowVminGood == LOW_VMIN_MIN_MV &&
+                g.lowVminTest == LOW_VMIN_MIN_MV;
+            if (lowVminMinimumNotice) {
+                restartVminSweep(false);
+                g.stageReadyAfterBoot = true;
+                saveState();
+            } else {
+                const bool bootSearch = g.stage == Stage::LowUvQuick || g.stage == Stage::LowVminQuick;
+                const u32 cfgMask = bootSearch ? defaultConfigMaskForStage(g.stage) : activeConfigMask();
+                if (cfgMask != Config_None) {
                 if (verifyPersistentSettings(cfgMask)) {
                     if (bootSearch) g.stageReadyAfterBoot = false;
                     g.pendingConfigMask = cfgMask;
@@ -3182,6 +3205,7 @@ int main(int argc, char** argv) {
                 int seconds = 0;
                 if (testPlan(g.stage, kind, seconds)) runCurrentTest();
                 else handlePass();
+            }
             }
             redraw = true;
         }

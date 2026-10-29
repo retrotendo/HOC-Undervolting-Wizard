@@ -1,0 +1,44 @@
+name: Fix beta39 scan UI escapes
+
+on:
+  push:
+    branches:
+      - beta39-voltage-scan-final-tests
+    paths:
+      - '.github/workflows/fix-beta39-escapes.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: beta39-voltage-scan-final-tests
+      - name: Fix scan escape sequences
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('source/main.cpp')
+          s = p.read_text()
+          for start, end in [
+              ('bool sampleVminVoltage(', 'void ensureDir()'),
+              ('bool sampleCpuVoltageAt(', 'void runAutomaticVoltageScan('),
+          ]:
+              a = s.index(start)
+              b = s.index(end, a)
+              block = s[a:b]
+              block = block.replace(r'\\x1b', r'\x1b')
+              s = s[:a] + block + s[b:]
+          p.write_text(s)
+          PY
+      - name: Commit fix
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add source/main.cpp
+          git commit -m "Fix beta39 scan UI escape sequences" || exit 0
+          git push

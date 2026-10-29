@@ -2755,38 +2755,19 @@ int main(int argc, char** argv) {
         padUpdate(&pad);
         const u64 k = padGetButtonsDown(&pad);
         consoleClear();
-        std::printf("[1;1H[31mHOC Undervolting Wizard - WARNING[0m
-");
-        std::printf("------------------------------------------------------------
-
-");
-        std::printf("[1mUSE AT YOUR OWN RISK[0m
-
-");
-        std::printf("This Wizard changes CPU/RAM voltage settings and runs
-");
-        std::printf("stability tests. Unstable settings can cause crashes,
-");
-        std::printf("boot failures, data/save corruption or data loss.
-
-");
-        std::printf("In extreme cases, hardware damage may also be possible.
-
-");
-        std::printf("The author and contributors provide no warranty and accept
-");
-        std::printf("no liability for data loss, software damage, hardware
-");
-        std::printf("damage or any other consequences of using this Wizard.
-
-");
-        std::printf("By continuing, you accept all risk and responsibility.
-
-");
-        std::printf("[A] I understand - Continue
-");
-        std::printf("[B] Exit
-");
+        std::printf("\x1b[1;1H\x1b[31mHOC Undervolting Wizard - WARNING\x1b[0m\n");
+        std::printf("------------------------------------------------------------\n\n");
+        std::printf("\x1b[1mUSE AT YOUR OWN RISK\x1b[0m\n\n");
+        std::printf("This Wizard changes CPU/RAM voltage settings and runs\n");
+        std::printf("stability tests. Unstable settings can cause crashes,\n");
+        std::printf("boot failures, data/save corruption or data loss.\n\n");
+        std::printf("In extreme cases, hardware damage may also be possible.\n\n");
+        std::printf("The author and contributors provide no warranty and accept\n");
+        std::printf("no liability for data loss, software damage, hardware\n");
+        std::printf("damage or any other consequences of using this Wizard.\n\n");
+        std::printf("By continuing, you accept all risk and responsibility.\n\n");
+        std::printf("[A] I understand - Continue\n");
+        std::printf("[B] Exit\n");
         consoleUpdate(nullptr);
 
         if (k & HidNpadButton_A) riskAccepted = true;

@@ -1,0 +1,28 @@
+name: Fix beta40 disclaimer source
+
+on:
+  push:
+    branches:
+      - beta40-validation-flow
+    paths:
+      - '.github/workflows/fix-beta40-disclaimer.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: beta40-validation-flow
+      - name: Fix disclaimer source
+        run: python3 tools/fix_beta40_disclaimer_source.py
+      - name: Commit fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add source/main.cpp
+          git commit -m 'Fix beta40 disclaimer string escapes'
+          git push origin HEAD:beta40-validation-flow

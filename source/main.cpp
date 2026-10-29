@@ -1809,6 +1809,7 @@ void renderTestStage() {
         if (configMask & (Config_LowUv | Config_LowVmin))
             uiPrintf(row++, "Y : Set value automatically");
         uiPrintf(row++, "+ : Known stable / Skip to next value");
+        uiPrintf(row++, "X : Known unstable / Use last good value");
         uiPrintf(row++, "B : Exit");
         printResetHint(row - 1);
         return;

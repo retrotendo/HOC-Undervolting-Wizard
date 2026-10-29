@@ -401,14 +401,14 @@ bool sampleVminVoltage(Stage s, int sweepIndex = -1, int sweepTotal = 0) {
     for (int attempt = 0; attempt < kAttempts; ++attempt) {
         for (int settle = 0; settle < kSettleReads; ++settle) {
             consoleClear();
-            std::printf("\\x1b[1;%dH\\x1b[36mBattery Wizard\\x1b[0m", UI_COL);
-            std::printf("\\x1b[2;%dHStep : CPU Low VMIN - AUTO SCAN", UI_COL);
-            std::printf("\\x1b[3;%dH----------------------------------------", UI_COL);
+            std::printf("\x1b[1;%dH\x1b[36mBattery Wizard\x1b[0m", UI_COL);
+            std::printf("\x1b[2;%dHStep : CPU Low VMIN - AUTO SCAN", UI_COL);
+            std::printf("\x1b[3;%dH----------------------------------------", UI_COL);
             if (sweepIndex >= 0 && sweepTotal > 0)
-                std::printf("\\x1b[5;%dHFrequency : %d / %d", UI_COL, sweepIndex + 1, sweepTotal);
-            std::printf("\\x1b[7;%dHCPU       : %s", UI_COL, formatClock(g_overrideCheck.expected.cpuHz).c_str());
-            std::printf("\\x1b[8;%dHGPU / RAM : 384 / 1331.2 MHz", UI_COL);
-            std::printf("\\x1b[10;%dHSettling voltage %d / %d...", UI_COL, settle + 1, kSettleReads);
+                std::printf("\x1b[5;%dHFrequency : %d / %d", UI_COL, sweepIndex + 1, sweepTotal);
+            std::printf("\x1b[7;%dHCPU       : %s", UI_COL, formatClock(g_overrideCheck.expected.cpuHz).c_str());
+            std::printf("\x1b[8;%dHGPU / RAM : 384 / 1331.2 MHz", UI_COL);
+            std::printf("\x1b[10;%dHSettling voltage %d / %d...", UI_COL, settle + 1, kSettleReads);
             consoleUpdate(nullptr);
             svcSleepThread(700'000'000);
             HocMonClocks ignored{};
@@ -419,15 +419,15 @@ bool sampleVminVoltage(Stage s, int sweepIndex = -1, int sweepTotal = 0) {
         samples.reserve(kSamples);
         for (int i = 0; i < kSamples; ++i) {
             consoleClear();
-            std::printf("\\x1b[1;%dH\\x1b[36mBattery Wizard\\x1b[0m", UI_COL);
-            std::printf("\\x1b[2;%dHStep : CPU Low VMIN - AUTO SCAN", UI_COL);
-            std::printf("\\x1b[3;%dH----------------------------------------", UI_COL);
+            std::printf("\x1b[1;%dH\x1b[36mBattery Wizard\x1b[0m", UI_COL);
+            std::printf("\x1b[2;%dHStep : CPU Low VMIN - AUTO SCAN", UI_COL);
+            std::printf("\x1b[3;%dH----------------------------------------", UI_COL);
             if (sweepIndex >= 0 && sweepTotal > 0)
-                std::printf("\\x1b[5;%dHFrequency : %d / %d", UI_COL, sweepIndex + 1, sweepTotal);
-            std::printf("\\x1b[7;%dHCPU       : %s", UI_COL, formatClock(g_overrideCheck.expected.cpuHz).c_str());
-            std::printf("\\x1b[8;%dHGPU / RAM : 384 / 1331.2 MHz", UI_COL);
-            std::printf("\\x1b[10;%dHReading CPU voltage sample %d / %d...", UI_COL, i + 1, kSamples);
-            if (attempt > 0) std::printf("\\x1b[12;%dHRetrying noisy measurement...", UI_COL);
+                std::printf("\x1b[5;%dHFrequency : %d / %d", UI_COL, sweepIndex + 1, sweepTotal);
+            std::printf("\x1b[7;%dHCPU       : %s", UI_COL, formatClock(g_overrideCheck.expected.cpuHz).c_str());
+            std::printf("\x1b[8;%dHGPU / RAM : 384 / 1331.2 MHz", UI_COL);
+            std::printf("\x1b[10;%dHReading CPU voltage sample %d / %d...", UI_COL, i + 1, kSamples);
+            if (attempt > 0) std::printf("\x1b[12;%dHRetrying noisy measurement...", UI_COL);
             consoleUpdate(nullptr);
             svcSleepThread(700'000'000);
 
@@ -2353,7 +2353,7 @@ bool sampleCpuVoltageAt(u32 cpuHz, int index, int total, int& outMv) {
     for (int attempt = 0; attempt < kAttempts; ++attempt) {
         for (int settle = 0; settle < kSettleReads; ++settle) {
             consoleClear();
-            uiPrintf(1, "\\x1b[36mBattery Wizard - CPU VOLTAGE SCAN\\x1b[0m");
+            uiPrintf(1, "\x1b[36mBattery Wizard - CPU VOLTAGE SCAN\x1b[0m");
             uiPrintf(3, "----------------------------------------");
             uiPrintf(5, "Frequency : %d / %d", index + 1, total);
             uiPrintf(7, "CPU       : %s", formatClock(cpuHz).c_str());
@@ -2369,7 +2369,7 @@ bool sampleCpuVoltageAt(u32 cpuHz, int index, int total, int& outMv) {
         samples.reserve(kSamples);
         for (int sample = 0; sample < kSamples; ++sample) {
             consoleClear();
-            uiPrintf(1, "\\x1b[36mBattery Wizard - CPU VOLTAGE SCAN\\x1b[0m");
+            uiPrintf(1, "\x1b[36mBattery Wizard - CPU VOLTAGE SCAN\x1b[0m");
             uiPrintf(3, "----------------------------------------");
             uiPrintf(5, "Frequency : %d / %d", index + 1, total);
             uiPrintf(7, "CPU       : %s", formatClock(cpuHz).c_str());

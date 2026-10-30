@@ -12,9 +12,7 @@ namespace {
 
 constexpr int kContentOffset = 5;
 constexpr int kLeftCol = 3;
-constexpr int kLeftWidth = 50;
 constexpr int kRightCol = 55;
-constexpr int kRightInner = 23;
 
 void at(int row, int col, const char* fmt, ...) {
     std::printf("\x1b[%d;%dH", row, col);

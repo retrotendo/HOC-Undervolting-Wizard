@@ -1,10 +1,10 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 namespace gui {
 
-// Presentation-only layer for the first 1.0.0 graphical beta.
 struct ValueRow {
     std::string label;
     std::string value;
@@ -13,6 +13,7 @@ struct ValueRow {
 
 struct View {
     std::string version;
+    std::string stageTitle;
     int activeStep = 1;
     bool pulse = false;
 
@@ -24,12 +25,33 @@ struct View {
     ValueRow values[5];
 };
 
-// Clears the console and paints the static full-screen shell, progress strip,
-// current instruction panel and live active-value panel.
-void draw(const View& view);
+struct StressView {
+    std::string title;
+    std::string subtitle;
+    std::string detail1;
+    std::string detail2;
+    std::uint64_t elapsedMs = 0;
+    int durationSeconds = 0;
+    std::uint64_t cpuPasses = 0;
+    std::uint64_t ramLoops = 0;
+    std::uint64_t gpuPasses = 0;
+    std::uint64_t errors = 0;
+    std::uint64_t mismatches = 0;
+    std::string ramTest;
+    std::uint64_t ramBytes = 0;
+};
 
-// Prints one logical content row into the left pane. Controller-action lines
-// are automatically styled as compact colored panels while keeping their text.
+// Real 1280x720 software-rendered UI using libnx Framebuffer + the Switch shared font.
+bool init();
+void shutdown();
+bool isInitialized();
+
+// Begin one Wizard page. printLeft() calls then add the existing guide text/actions.
+void begin(const View& view);
 void printLeft(int logicalRow, const char* text);
+void present();
+
+// Dedicated graphical progress page used while built-in stress tests are running.
+void presentStress(const StressView& view);
 
 } // namespace gui

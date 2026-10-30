@@ -1374,11 +1374,14 @@ gui::View buildGuiView() {
         addPrep("@ HORIZON OC", "RAM · HP Mode", "OFF", have ? (c.hpMode ? "ON" : "OFF") : "", have && c.hpMode);
         addPrep("@ HORIZON OC", "RAM · RAM Max", "1600 MHz", have ? std::to_string(c.ramMaxKHz / 1000U) + " MHz" : "", have && c.ramMaxKHz != 1600000U);
         addPrep("@ HORIZON OC", "RAM · VDD2", formatVdd2(STOCK_VDD2_UV), have ? formatVdd2((int)c.vdd2Uv) : "", have && c.vdd2Uv != (u32)STOCK_VDD2_UV);
-        addPrep("@ HORIZON OC", "RAM · VDDQ", formatMv(g.vddqStartMv), have ? formatMv((int)(c.vddqUv / 1000U)) : "", have && c.vddqUv != (u32)g.vddqStartMv * 1000U);
+        addPrep("@ HORIZON OC", "RAM · VDDQ", std::to_string(g.vddqStartMv) + " mV", have ? std::to_string((int)(c.vddqUv / 1000U)) + " mV" : "", have && c.vddqUv != (u32)g.vddqStartMv * 1000U);
         addPrep("@ HORIZON OC", "CPU · CPU Max", "1963 MHz", have ? std::to_string(c.cpuMaxKHz / 1000U) + " MHz" : "", have && c.cpuMaxKHz != 1963500U);
-        addPrep("@ HORIZON OC", "CPU · Low VMIN", formatMv(STOCK_LOW_VMIN_MV), have ? formatMv(c.lowVminMv) : "", have && c.lowVminMv != STOCK_LOW_VMIN_MV);
-        addPrep("@ HORIZON OC", "CPU · High VMIN", formatMv(STOCK_HIGH_VMIN_MV), have ? formatMv(c.highVminMv) : "", have && c.highVminMv != STOCK_HIGH_VMIN_MV);
-        addPrep("@ HORIZON OC", "CPU · UV Table", "1683 Tbreak", have ? std::string(cpuTableLabel(c.tableConf)) : "", have && c.tableConf != 3);
+        addPrep("@ HORIZON OC", "CPU · Low VMIN", std::to_string(STOCK_LOW_VMIN_MV) + " mV", have ? std::to_string(c.lowVminMv) + " mV" : "", have && c.lowVminMv != STOCK_LOW_VMIN_MV);
+        addPrep("@ HORIZON OC", "CPU · High VMIN", std::to_string(STOCK_HIGH_VMIN_MV) + " mV", have ? std::to_string(c.highVminMv) + " mV" : "", have && c.highVminMv != STOCK_HIGH_VMIN_MV);
+        const std::string activeTable = !have ? "" :
+            (c.tableConf == 1 ? "Default" : c.tableConf == 2 ? "1581 Tbreak" :
+             c.tableConf == 3 ? "1683 Tbreak" : c.tableConf == 4 ? "Extreme UV" : "Unknown");
+        addPrep("@ HORIZON OC", "CPU · UV Table", "1683 Tbreak", activeTable, have && c.tableConf != 3);
         addPrep("@ HORIZON OC", "CPU · Low UV", "0", have ? std::to_string(c.lowUv) : "", have && c.lowUv != STOCK_LOW_UV);
         addPrep("@ HORIZON OC", "CPU · High UV", "0", have ? std::to_string(c.highUv) : "", have && c.highUv != STOCK_HIGH_UV);
         addPrep("@ HOC TOOLKIT", "CPU Boost", "1785 MHz", have ? std::to_string(c.cpuBoostKHz / 1000U) + " MHz" : "", have && c.cpuBoostKHz != 1785000U);

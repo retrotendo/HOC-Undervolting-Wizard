@@ -1,0 +1,28 @@
+name: Apply beta47 UX
+
+on:
+  push:
+    branches:
+      - beta47-ux
+    paths:
+      - '.github/workflows/apply-beta47-ux.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: beta47-ux
+      - name: Apply beta47 UX patch
+        run: python3 tools/patch_beta47_ux.py
+      - name: Commit beta47 UX
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add source/main.cpp source/gui_console.cpp source/gui_console.hpp
+          git commit -m 'Make boot checks modal and reset disclaimer with wizard'
+          git push origin HEAD:beta47-ux

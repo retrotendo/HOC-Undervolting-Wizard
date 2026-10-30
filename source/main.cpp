@@ -155,6 +155,8 @@ bool g_manualPass = false;
 bool g_lastVminAtFloor = false;
 bool g_guiPulse = false;
 
+void uiPresent();
+
 struct OverrideExpectation {
     u32 cpuHz = 0;
     u32 gpuHz = 0;

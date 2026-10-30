@@ -12,6 +12,14 @@ struct ValueRow {
     bool mismatch = false;
 };
 
+struct PreparationRow {
+    std::string group;
+    std::string label;
+    std::string setValue;
+    std::string activeValue;
+    bool mismatch = false;
+};
+
 struct View {
     std::string version;
     std::string stageTitle;
@@ -24,6 +32,10 @@ struct View {
 
     bool haveActiveValues = false;
     ValueRow values[5];
+
+    bool preparationLayout = false;
+    bool havePreparationActiveValues = false;
+    std::vector<PreparationRow> preparationRows;
 };
 
 enum class ModalTone { Cyan, Green, Amber, Red };

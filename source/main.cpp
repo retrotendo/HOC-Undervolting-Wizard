@@ -1274,6 +1274,9 @@ gui::View buildGuiView() {
     v.stageTitle = stageName(g.stage);
     v.activeStep = guiProgressStep(g.stage);
     v.pulse = g_guiPulse;
+    v.preparationLayout = (g.stage == Stage::Preparation && !g_autoPrepConfirm && !g_rebootConfirm);
+    if (v.preparationLayout && g_configPrompt && (g_configCheck.mask & Config_Prepare))
+        v.stageTitle = "Preparation - Setting not ready";
 
     const u32 mask = guiInstructionMask();
     if (mask & Config_Prepare) {
@@ -1353,6 +1356,33 @@ gui::View buildGuiView() {
     bool have = R_SUCCEEDED(hocmonGetConfig251(&c));
     if (!have) have = readHocConfigIni(c);
     v.haveActiveValues = have;
+    v.havePreparationActiveValues = have;
+
+    if (v.preparationLayout) {
+        auto addPrep = [&](const char* group, const char* label, const std::string& setValue,
+                           const std::string& activeValue, bool mismatch) {
+            gui::PreparationRow r{};
+            r.group = group;
+            r.label = label;
+            r.setValue = setValue;
+            r.activeValue = have ? activeValue : "unavailable";
+            r.mismatch = have && mismatch;
+            v.preparationRows.push_back(r);
+        };
+
+        addPrep("@ HORIZON OC", "General · Uncapped Clocks", "OFF", have ? (c.uncappedClocks ? "ON" : "OFF") : "", have && c.uncappedClocks);
+        addPrep("@ HORIZON OC", "RAM · HP Mode", "OFF", have ? (c.hpMode ? "ON" : "OFF") : "", have && c.hpMode);
+        addPrep("@ HORIZON OC", "RAM · RAM Max", "1600 MHz", have ? std::to_string(c.ramMaxKHz / 1000U) + " MHz" : "", have && c.ramMaxKHz != 1600000U);
+        addPrep("@ HORIZON OC", "RAM · VDD2", formatVdd2(STOCK_VDD2_UV), have ? formatVdd2((int)c.vdd2Uv) : "", have && c.vdd2Uv != (u32)STOCK_VDD2_UV);
+        addPrep("@ HORIZON OC", "RAM · VDDQ", formatMv(g.vddqStartMv), have ? formatMv((int)(c.vddqUv / 1000U)) : "", have && c.vddqUv != (u32)g.vddqStartMv * 1000U);
+        addPrep("@ HORIZON OC", "CPU · CPU Max", "1963 MHz", have ? std::to_string(c.cpuMaxKHz / 1000U) + " MHz" : "", have && c.cpuMaxKHz != 1963500U);
+        addPrep("@ HORIZON OC", "CPU · Low VMIN", formatMv(STOCK_LOW_VMIN_MV), have ? formatMv(c.lowVminMv) : "", have && c.lowVminMv != STOCK_LOW_VMIN_MV);
+        addPrep("@ HORIZON OC", "CPU · High VMIN", formatMv(STOCK_HIGH_VMIN_MV), have ? formatMv(c.highVminMv) : "", have && c.highVminMv != STOCK_HIGH_VMIN_MV);
+        addPrep("@ HORIZON OC", "CPU · UV Table", "1683 Tbreak", have ? std::string(cpuTableLabel(c.tableConf)) : "", have && c.tableConf != 3);
+        addPrep("@ HORIZON OC", "CPU · Low UV", "0", have ? std::to_string(c.lowUv) : "", have && c.lowUv != STOCK_LOW_UV);
+        addPrep("@ HORIZON OC", "CPU · High UV", "0", have ? std::to_string(c.highUv) : "", have && c.highUv != STOCK_HIGH_UV);
+        addPrep("@ HOC TOOLKIT", "CPU Boost", "1785 MHz", have ? std::to_string(c.cpuBoostKHz / 1000U) + " MHz" : "", have && c.cpuBoostKHz != 1785000U);
+    }
 
     v.values[0].label = "CPU Low UV";
     v.values[1].label = "CPU Low VMIN";

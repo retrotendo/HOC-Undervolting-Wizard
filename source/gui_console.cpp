@@ -288,6 +288,41 @@ void drawInstructionCard() {
     drawText(x + 38, y + 137, 25, C_CYAN, fitText(g_view.instructionLine2, 25, w - 76));
 }
 
+void drawPreparationCard() {
+    const int x = 715, y = 158, w = 525, h = 522;
+    drawCard(x, y, w, h, true);
+    drawLabel(x + 24, y + 20, "CURRENT INSTRUCTION");
+    drawText(x + 24, y + 48, 27, C_TEXT, "Preparation");
+
+    const int setRight = x + 393;
+    const int activeRight = x + w - 24;
+    drawTextRight(setRight, y + 80, 13, C_MUTED, "SET");
+    drawTextRight(activeRight, y + 80, 13, C_MUTED, "ACTIVE");
+    fillRect(x + 24, y + 105, w - 48, 1, C_BORDER);
+
+    int yy = y + 119;
+    std::string currentGroup;
+    for (const PreparationRow& r : g_view.preparationRows) {
+        if (r.group != currentGroup) {
+            if (!currentGroup.empty()) {
+                fillRect(x + 24, yy + 1, w - 48, 1, C_BORDER);
+                yy += 13;
+            }
+            drawText(x + 24, yy, 14, C_CYAN, r.group);
+            yy += 24;
+            currentGroup = r.group;
+        }
+
+        if (r.mismatch)
+            roundedRect(x + 18, yy - 3, w - 36, 26, 8, mix(C_PANEL_2, C_RED, 10));
+        drawText(x + 28, yy, 14, C_MUTED, fitText(r.label, 14, 235));
+        drawTextRight(setRight, yy, 14, C_TEXT, fitText(r.setValue, 14, 104));
+        const u32 activeColor = !g_view.havePreparationActiveValues ? C_MUTED : (r.mismatch ? C_RED : C_TEXT);
+        drawTextRight(activeRight, yy, 14, activeColor, fitText(r.activeValue, 14, 105));
+        yy += 23;
+    }
+}
+
 void drawValuesCard() {
     const int x = 835, y = 382, w = 405, h = 298;
     drawCard(x, y, w, h, false);
@@ -310,7 +345,7 @@ void drawValuesCard() {
 }
 
 void drawMainCard() {
-    const int x = 40, y = 158, w = 765, h = 522;
+    const int x = 40, y = 158, w = g_view.preparationLayout ? 650 : 765, h = 522;
     drawCard(x, y, w, h, false);
     drawLabel(x + 26, y + 20, "GUIDED TUNING");
     drawText(x + 26, y + 49, 29, C_TEXT, fitText(g_view.stageTitle, 29, w - 52));
@@ -327,29 +362,39 @@ void drawMainCard() {
         else body.push_back(s);
     }
 
-    const int bodyMax = actions.empty() ? 15 : (actions.size() >= 5 ? 7 : 10);
-    const int bodySize = body.size() > size_t(bodyMax) ? 16 : 18;
-    const int bodyStep = bodySize + 7;
-    int by = y + 116;
-    int shown = 0;
-    for (const std::string& raw : body) {
-        if (shown >= bodyMax) break;
-        const bool heading = raw == "Objective:" || raw == "Test:" || raw == "Keys:" ||
-                             raw == "Required test clocks:" || raw == "Current Temporary Overrides:" ||
-                             raw == "Final values:" || raw == "Temporary Overrides:";
-        drawText(x + 28, by, heading ? 15 : bodySize, heading ? C_CYAN : C_TEXT,
-                 fitText(raw, heading ? 15 : bodySize, w - 56));
-        by += heading ? 24 : bodyStep;
-        ++shown;
+    if (g_view.preparationLayout) {
+        drawText(x + 28, y + 120, 18, C_TEXT,
+                 g_view.stageTitle.find("not ready") != std::string::npos
+                    ? "Some Preparation values do not match yet."
+                    : "Set the Preparation values shown on the right.");
+        drawText(x + 28, y + 151, 16, C_MUTED, "SET = required value");
+        drawText(x + 28, y + 178, 16, C_MUTED, "ACTIVE = value currently reported by Horizon OC");
+        drawText(x + 28, y + 205, 16, C_RED, "Red ACTIVE values still need attention.");
+    } else {
+        const int bodyMax = actions.empty() ? 15 : (actions.size() >= 5 ? 7 : 10);
+        const int bodySize = body.size() > size_t(bodyMax) ? 16 : 18;
+        const int bodyStep = bodySize + 7;
+        int by = y + 116;
+        int shown = 0;
+        for (const std::string& raw : body) {
+            if (shown >= bodyMax) break;
+            const bool heading = raw == "Objective:" || raw == "Test:" || raw == "Keys:" ||
+                                 raw == "Required test clocks:" || raw == "Current Temporary Overrides:" ||
+                                 raw == "Final values:" || raw == "Temporary Overrides:";
+            drawText(x + 28, by, heading ? 15 : bodySize, heading ? C_CYAN : C_TEXT,
+                     fitText(raw, heading ? 15 : bodySize, w - 56));
+            by += heading ? 24 : bodyStep;
+            ++shown;
+        }
+        if (shown < int(body.size())) drawText(x + 28, by, 15, C_MUTED, "More details continue in this step...");
     }
-    if (shown < int(body.size())) drawText(x + 28, by, 15, C_MUTED, "More details continue in this step...");
 
     if (!actions.empty()) {
         const int gap = 8;
         const int ah = actions.size() >= 5 ? 35 : 39;
         const int total = int(actions.size()) * ah + (int(actions.size()) - 1) * gap;
         int ay = y + h - 24 - total - (reset.empty() ? 0 : 28);
-        ay = std::max(ay, y + 260);
+        ay = std::max(ay, y + (g_view.preparationLayout ? 255 : 260));
         for (const auto& a : actions) {
             drawActionButton(x + 26, ay, w - 52, ah, a);
             ay += ah + gap;
@@ -590,8 +635,12 @@ void present() {
     drawHeader();
     drawProgress();
     drawMainCard();
-    drawInstructionCard();
-    drawValuesCard();
+    if (g_view.preparationLayout) {
+        drawPreparationCard();
+    } else {
+        drawInstructionCard();
+        drawValuesCard();
+    }
     endFrame();
 }
 

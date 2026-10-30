@@ -56,6 +56,7 @@ constexpr int LOW_VMIN_STEP_MV = 10;
 constexpr int VDDQ_STEP_MV = 10;
 constexpr u32 VMIN_FLOOR_TOLERANCE_UV = 5000U;
 constexpr int VDD2_STEP_UV = 12500;
+constexpr int UI_COL = 3; // legacy direct-print compatibility
 
 enum class Stage : int {
     Preparation = 0,

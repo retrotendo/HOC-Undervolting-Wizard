@@ -25,6 +25,9 @@ jobs:
       - name: Create SHA256
         run: sha256sum HOC-Undervolting-Wizard.nro > HOC-Undervolting-Wizard.nro.sha256
 
+      - name: Show SHA256
+        run: cat HOC-Undervolting-Wizard.nro.sha256
+
       - name: Publish prerelease
         uses: softprops/action-gh-release@v2
         with:
@@ -35,3 +38,5 @@ jobs:
           files: |
             HOC-Undervolting-Wizard.nro
             HOC-Undervolting-Wizard.nro.sha256
+
+# beta49 release trigger

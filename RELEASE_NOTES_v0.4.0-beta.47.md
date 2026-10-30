@@ -18,6 +18,12 @@
 - Yes advances to the next candidate; No returns to the previous known-good value.
 - Freeze, crash and unexpected reboot checks are shown in plain language.
 
+## Stability test display
+- Running tests now show the tuning purpose instead of only the underlying test engine name.
+- CPU voltage-region validation clearly shows the current CPU clock, region number and observed voltage, for example: CPU 510 MHz | Region 1 of 4 | ~570 mV.
+- Low UV, Low VMIN, VDDQ, VDD2 and High UV tests use clear purpose-specific titles so repeated region tests are easy to distinguish.
+- The underlying stress-test engines and validation logic are unchanged.
+
 ## Safety notice
 - Resetting Wizard progress now clears the disclaimer acknowledgement.
 - After a reset, the safety notice appears again on the next app start while the Wizard is back at Baseline.

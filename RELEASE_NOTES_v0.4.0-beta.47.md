@@ -12,5 +12,16 @@
 - Preparation's Setting Not Ready screen uses the same SET / ACTIVE table instead of printing a long list into the left guide card.
 - Even if every Preparation value is wrong, all values remain visible without overlapping the action buttons.
 
+## Boot checks
+- Post-reboot stability confirmation is now a focused popup instead of a full technical guide page.
+- The popup asks a simple Yes / No question such as "Did Low UV 1 boot normally?".
+- Yes advances to the next candidate; No returns to the previous known-good value.
+- Freeze, crash and unexpected reboot checks are shown in plain language.
+
+## Safety notice
+- Resetting Wizard progress now clears the disclaimer acknowledgement.
+- After a reset, the safety notice appears again on the next app start while the Wizard is back at Baseline.
+- Existing tuning runs beyond Baseline do not get interrupted by the disclaimer after a reboot or crash.
+
 ## Tuning logic
 - No tuning thresholds, test logic, recovery behavior, or validation durations were changed.

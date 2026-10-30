@@ -4,6 +4,7 @@
 
 namespace gui {
 
+// Presentation-only layer for the first 1.0.0 graphical beta.
 struct ValueRow {
     std::string label;
     std::string value;

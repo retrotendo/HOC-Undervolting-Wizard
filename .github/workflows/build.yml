@@ -13,6 +13,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install GUI font dependency
+        run: dkp-pacman -Syu --noconfirm switch-freetype
+
       - name: Build
         run: make -j2
 

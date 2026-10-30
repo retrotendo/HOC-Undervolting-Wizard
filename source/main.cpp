@@ -1674,53 +1674,70 @@ BootInference inferBootState(int* activeValue = nullptr) {
 }
 
 void renderBootPrompt() {
-    guiPageClear();
-    uiPrintf(1, "\x1b[36mBattery Wizard - BOOT CHECK\x1b[0m");
-    uiPrintf(3, "----------------------------------------");
-
     int active = 0;
     const BootInference state = inferBootState(&active);
-    int row = 5;
-    if (g.stage == Stage::LowUvQuick) {
-        uiPrintf(row++, "Requested Low UV : %d", g.lowUvTest);
-        uiPrintf(row++, "Active Low UV    : %d", active);
-    } else if (g.stage == Stage::LowVminQuick) {
-        uiPrintf(row++, "Requested VMIN   : %d mV", g.lowVminTest);
-        uiPrintf(row++, "Active VMIN      : %d mV", active);
-    }
-    row++;
+
+    gui::ModalView m{};
+    m.version = HOC_WIZARD_VERSION;
+    m.eyebrow = "BOOT CHECK";
 
     if (state == BootInference::RequestedActive) {
-        uiPrintf(row++, "Only continue if normal CFW booted AND:");
-        uiPrintf(row++, " - no system freeze");
-        uiPrintf(row++, " - no crash");
-        uiPrintf(row++, " - no spontaneous reboot/system failure");
-        row += 2;
-        uiPrintf(row++, "A : Stable boot - continue");
-        uiPrintf(row++, "X : Not stable / crashed / froze");
+        if (g.stage == Stage::LowUvQuick)
+            m.title = "Did Low UV " + std::to_string(g.lowUvTest) + " boot normally?";
+        else if (g.stage == Stage::LowVminQuick)
+            m.title = "Did Low VMIN " + std::to_string(g.lowVminTest) + " mV boot normally?";
+        else
+            m.title = "Did normal CFW boot successfully?";
+
+        m.body = {
+            "Choose Yes only if normal CFW started successfully.",
+            "No freeze.",
+            "No crash.",
+            "No unexpected reboot or system failure."
+        };
+        m.primaryAction = "Yes - boot was stable";
+        m.tertiaryAction = "No - boot was unstable";
+        m.secondaryAction = "Exit and decide later";
+        m.tone = gui::ModalTone::Cyan;
     } else if (state == BootInference::SaferActive) {
         if (g_bootRecoveryCandidate < 0) g_bootRecoveryCandidate = active;
-        if (g.stage == Stage::LowUvQuick)
-            uiPrintf(row++, "It looks like Low UV %d did not boot.", g.lowUvTest);
-        else if (g.stage == Stage::LowVminQuick)
-            uiPrintf(row++, "It looks like Low VMIN %d mV did not boot.", g.lowVminTest);
-        row++;
-        if (g.stage == Stage::LowUvQuick)
-            uiPrintf(row++, "\x1b[32mLast good value: Low UV %d\x1b[0m", g_bootRecoveryCandidate);
-        else if (g.stage == Stage::LowVminQuick)
-            uiPrintf(row++, "\x1b[32mLast good value: Low VMIN %d mV\x1b[0m", g_bootRecoveryCandidate);
-        row++;
-        uiPrintf(row++, "A : Confirm last good value");
-        uiPrintf(row++, "X : Try one safer value");
+
+        if (g.stage == Stage::LowUvQuick) {
+            m.title = "Low UV " + std::to_string(g.lowUvTest) + " did not boot";
+            m.body = {
+                "The console is currently running a safer value.",
+                "Last known good value: Low UV " + std::to_string(g_bootRecoveryCandidate) + ".",
+                "Use the last good value, or choose one safer value."
+            };
+        } else if (g.stage == Stage::LowVminQuick) {
+            m.title = "Low VMIN " + std::to_string(g.lowVminTest) + " mV did not boot";
+            m.body = {
+                "The console is currently running a safer value.",
+                "Last known good value: Low VMIN " + std::to_string(g_bootRecoveryCandidate) + " mV.",
+                "Use the last good value, or choose one safer value."
+            };
+        } else {
+            m.title = "The requested setting did not boot";
+            m.body = {"The console is currently running a safer value."};
+        }
+        m.primaryAction = "Use last good value";
+        m.tertiaryAction = "Try one safer value";
+        m.secondaryAction = "Exit and decide later";
+        m.tone = gui::ModalTone::Amber;
     } else {
-        uiPrintf(row++, "\x1b[31mCould not confirm active value.\x1b[0m");
-        uiPrintf(row++, "Check Horizon OC / recovery state.");
-        row += 2;
-        uiPrintf(row++, "A : Check again");
-        uiPrintf(row++, "X : Treat as unstable and recover");
+        m.title = "Active value could not be confirmed";
+        m.body = {
+            "The Wizard could not verify the requested value in the running Horizon OC configuration.",
+            "Check Horizon OC or the recovery state, then try again.",
+            "If the boot was not stable, choose No to recover to the safer value."
+        };
+        m.primaryAction = "Check again";
+        m.tertiaryAction = "No - treat as unstable";
+        m.secondaryAction = "Exit and decide later";
+        m.tone = gui::ModalTone::Red;
     }
-    uiPrintf(row + 1, "B : Exit and decide later");
-    uiPresent();
+
+    gui::presentModal(m);
 }
 
 void printSingleConfigCheck(int row, const char* label, const std::string& required,
@@ -3115,12 +3132,30 @@ int main(int argc, char** argv) {
 
     ensureDir();
 
-    // The disclaimer is a one-time acknowledgement, independent of Wizard reset.
-    // Existing installations with a state file have necessarily already passed it.
-    bool riskAccepted = access(DISCLAIMER_ACK, F_OK) == 0 || access(STATE, F_OK) == 0;
-    if (riskAccepted && access(DISCLAIMER_ACK, F_OK) != 0) {
+    // Load Wizard progress before deciding whether the safety notice is needed.
+    // Existing tuning runs must never be interrupted by a newly introduced
+    // disclaimer, but a deliberate Wizard reset starts a fresh run and clears
+    // the acknowledgement below.
+    migrateLegacyState();
+    const bool hadStateBeforeLoad = access(STATE, F_OK) == 0;
+    if (!loadState()) saveState();
+
+    const bool tuningAlreadyStarted =
+        g.stage != Stage::HardwareDetection && g.stage != Stage::Preparation;
+    bool riskAccepted = access(DISCLAIMER_ACK, F_OK) == 0;
+
+    // Upgrade compatibility: an older installation already beyond Baseline has
+    // necessarily been using the Wizard. Mark it accepted silently so a reboot
+    // during tuning never inserts the disclaimer into the active workflow.
+    if (!riskAccepted && hadStateBeforeLoad && tuningAlreadyStarted) {
         std::ofstream ack(DISCLAIMER_ACK, std::ios::trunc);
-        if (ack) { ack << "accepted=1\n"; ack.close(); fsdevCommitDevice("sdmc"); }
+        if (ack) {
+            ack << "accepted=1\n";
+            ack.flush();
+            ack.close();
+            fsdevCommitDevice("sdmc");
+            riskAccepted = true;
+        }
     }
 
     while (appletMainLoop() && !riskAccepted) {
@@ -3163,9 +3198,6 @@ int main(int argc, char** argv) {
         gui::shutdown();
         return 0;
     }
-
-    migrateLegacyState();
-    if (!loadState()) saveState();
 
     // Identify Mariko DRAM on every upgraded state that does not have it yet.
     // New users remain on the dedicated Hardware Detection page; progressed
@@ -3458,6 +3490,10 @@ int main(int argc, char** argv) {
         if (g_resetConfirm) {
             if (k & HidNpadButton_A) {
                 resetState();
+                // A reset starts a new tuning run. Show the safety notice again
+                // on the next app start while the Wizard is back at Baseline.
+                unlink(DISCLAIMER_ACK);
+                fsdevCommitDevice("sdmc");
                 detectRamHardware();
                 g_resetConfirm = false;
                 redraw = true;

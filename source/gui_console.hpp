@@ -46,7 +46,8 @@ struct ModalView {
     std::string title;
     std::vector<std::string> body;
     std::string primaryAction;
-    std::string secondaryAction;
+    std::string tertiaryAction;  // X button, optional
+    std::string secondaryAction; // B button, optional
     ModalTone tone = ModalTone::Cyan;
 };
 

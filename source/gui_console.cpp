@@ -509,7 +509,13 @@ void drawModalFrame(const ModalView& m) {
 
     if (!m.primaryAction.empty()) {
         const int by = y + h - 78;
-        if (!m.secondaryAction.empty()) {
+        if (!m.tertiaryAction.empty()) {
+            // Decision modal: one clear Yes / No / Exit row.
+            drawActionButton(x + 38,  by, 296, 48, "A : " + m.primaryAction);
+            drawActionButton(x + 347, by, 296, 48, "X : " + m.tertiaryAction);
+            if (!m.secondaryAction.empty())
+                drawActionButton(x + 656, by, 296, 48, "B : " + m.secondaryAction);
+        } else if (!m.secondaryAction.empty()) {
             drawActionButton(x + 38, by, 445, 48, "A : " + m.primaryAction);
             drawActionButton(x + 507, by, 445, 48, "B : " + m.secondaryAction);
         } else {

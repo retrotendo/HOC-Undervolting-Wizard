@@ -1389,7 +1389,7 @@ void guiPageClear() {
 
 void uiPresent() {
     if (gui::isInitialized()) gui::present();
-    else uiPresent();
+    else consoleUpdate(nullptr);
 }
 
 void uiPrintf(int row, const char* fmt, ...) {

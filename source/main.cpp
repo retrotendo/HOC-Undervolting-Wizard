@@ -1507,9 +1507,8 @@ void footerTest(int row) {
     uiPrintf(row + 1, "    If the test crashes, reboot and");
     uiPrintf(row + 2, "    open the Wizard again.");
     uiPrintf(row + 3, "+ : Known PASS / Skip step");
-    uiPrintf(row + 4, "X : Known FAIL / Skip step");
-    uiPrintf(row + 5, "B : Exit");
-    printResetHint(row + 5);
+    uiPrintf(row + 4, "B : Exit");
+    printResetHint(row + 4);
 }
 
 
@@ -3639,7 +3638,16 @@ int main(int argc, char** argv) {
             }
             redraw = true;
         } else if (k & HidNpadButton_X) {
-            if (!isVminSweepStage(g.stage) && g.stage != Stage::Preparation && g.stage != Stage::Complete) {
+            // X is only a manual "known unstable" shortcut while searching a
+            // new candidate. Long/final validations record FAIL automatically;
+            // crashes/reboots are handled by the interrupted-test popup on restart.
+            const u32 cfgMask = activeConfigMask();
+            const bool searchSetting = g.stage == Stage::LowUvQuick ||
+                                       g.stage == Stage::LowVminQuick ||
+                                       g.stage == Stage::VddqQuick ||
+                                       g.stage == Stage::Vdd2Quick ||
+                                       g.stage == Stage::HighUvQuick;
+            if (cfgMask != Config_None && searchSetting) {
                 handleFail(false);
                 redraw = true;
             }

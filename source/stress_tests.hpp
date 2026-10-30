@@ -29,6 +29,6 @@ struct Result {
 };
 
 const char* kindName(Kind kind);
-Result run(Kind kind, int durationSeconds);
+Result run(Kind kind, int durationSeconds, const std::string& displayTitle = {}, const std::string& displayContext = {});
 
 } // namespace stress

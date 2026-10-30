@@ -372,12 +372,13 @@ const char* creditLine(Kind kind) {
     return "";
 }
 
-void renderProgress(Kind kind, int durationSeconds, std::uint64_t elapsedMs, const Context& c) {
+void renderProgress(Kind kind, int durationSeconds, std::uint64_t elapsedMs, const Context& c,
+                    const std::string& displayTitle, const std::string& displayContext) {
     gui::StressView v{};
-    v.title = kindName(kind);
-    v.subtitle = creditLine(kind);
-    v.detail1 = "Do not leave the app while the test is running.";
-    v.detail2 = "The Wizard records PASS/FAIL automatically when the test ends.";
+    v.title = displayTitle.empty() ? kindName(kind) : displayTitle;
+    v.subtitle = displayContext.empty() ? "Stability validation in progress" : displayContext;
+    v.detail1 = std::string("Test engine: ") + kindName(kind);
+    v.detail2 = creditLine(kind);
     v.elapsedMs = elapsedMs;
     v.durationSeconds = durationSeconds;
     v.cpuPasses = c.cpuIterations.load(std::memory_order_relaxed);
@@ -405,7 +406,7 @@ const char* kindName(Kind kind) {
     return "Unknown Test";
 }
 
-Result run(Kind kind, int durationSeconds) {
+Result run(Kind kind, int durationSeconds, const std::string& displayTitle, const std::string& displayContext) {
     Result out;
     Context c;
 
@@ -438,7 +439,7 @@ Result run(Kind kind, int durationSeconds) {
         const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
 
         if (now - lastDraw >= std::chrono::milliseconds(200)) {
-            renderProgress(kind, durationSeconds, std::uint64_t(elapsed), c);
+            renderProgress(kind, durationSeconds, std::uint64_t(elapsed), c, displayTitle, displayContext);
             lastDraw = now;
         }
 

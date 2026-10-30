@@ -2956,7 +2956,12 @@ void runAutomaticRegionValidation(bool forLowUv) {
         g.testStage = static_cast<int>(g.stage);
         saveState();
         g_lastKind = stress::Kind::Cpu;
-        g_lastResult = stress::run(stress::Kind::Cpu, 60);
+        const std::string regionTitle = forLowUv ? "CPU Low UV Stability" : "CPU Low VMIN Stability";
+        const std::string regionContext =
+            "CPU " + formatClock(hz) + "  |  Region " + std::to_string(i + 1) +
+            " of " + std::to_string(g.vminValidateCount) +
+            "  |  ~" + std::to_string(g.vminValidateMv[i]) + " mV";
+        g_lastResult = stress::run(stress::Kind::Cpu, 60, regionTitle, regionContext);
         g.testRunning = false;
         g.testKind = g.testDurationSec = g.testStage = 0;
         saveState();
@@ -3010,6 +3015,79 @@ void runAutomaticVminScan() {
 
 
 
+void stressDisplayForStage(Stage st, const OverrideExpectation& expected,
+                           std::string& title, std::string& context) {
+    title = "Stability Test";
+    context.clear();
+
+    auto clockContext = [&]() {
+        std::string out;
+        if (expected.cpuHz) out += "CPU " + formatClock(expected.cpuHz);
+        if (expected.ramHz) {
+            if (!out.empty()) out += "  |  ";
+            out += "RAM " + formatClock(expected.ramHz);
+        }
+        return out;
+    };
+
+    switch (st) {
+        case Stage::VddqQuick:
+            title = "VDDQ Stability";
+            context = "VDDQ " + std::to_string(g.vddqTest) + " mV";
+            break;
+        case Stage::VddqLong:
+            title = "VDDQ Final Stability";
+            context = "VDDQ " + std::to_string(g.vddqGood) + " mV";
+            break;
+        case Stage::Vdd2Quick:
+            title = "VDD2 Stability";
+            context = "VDD2 " + formatVdd2(g.vdd2TestUv);
+            break;
+        case Stage::Vdd2Long:
+            title = "VDDQ + VDD2 Pair Stability";
+            context = "VDDQ " + std::to_string(g.vddqGood) + " mV  |  VDD2 " + formatVdd2(g.vdd2GoodUv);
+            break;
+        case Stage::NormalMatrixValidate:
+            title = "CPU Low UV + RAM Stability";
+            context = clockContext();
+            break;
+        case Stage::HighUvQuick:
+            title = "CPU High UV Stability";
+            context = "High UV " + std::to_string(g.highUvTest);
+            if (!clockContext().empty()) context += "  |  " + clockContext();
+            break;
+        case Stage::HighUvLong:
+            title = "CPU High UV Stability";
+            context = "High UV " + std::to_string(g.highUvGood);
+            if (!clockContext().empty()) context += "  |  " + clockContext();
+            break;
+        case Stage::BoostCpuRamValidate:
+            title = "CPU High UV Stability";
+            context = "High UV " + std::to_string(g.highUvGood) + "  |  " + clockContext();
+            break;
+        case Stage::BoostCpuMemValidate:
+            title = "CPU High UV + RAM Stability";
+            context = "High UV " + std::to_string(g.highUvGood) + "  |  " + clockContext();
+            break;
+        case Stage::RamBoostValidate:
+            title = "RAM Stability";
+            context = "Boost state  |  " + clockContext();
+            break;
+        case Stage::Ram1331Validate:
+            title = "RAM Stability";
+            context = "Handheld state  |  " + clockContext();
+            break;
+        case Stage::LowVminFinalLong:
+            title = "CPU Low VMIN Stability";
+            context = "Low VMIN " + std::to_string(g.lowVminGood) + " mV  |  " + clockContext();
+            break;
+        default:
+            title = stageName(st);
+            context = clockContext();
+            break;
+    }
+}
+
 void runCurrentTest() {
     stress::Kind kind;
     int seconds = 0;
@@ -3035,8 +3113,11 @@ void runCurrentTest() {
     g.testStage = static_cast<int>(testedStage);
     saveState();
 
+    std::string stressTitle;
+    std::string stressContext;
+    stressDisplayForStage(testedStage, expected, stressTitle, stressContext);
     g_lastKind = kind;
-    g_lastResult = stress::run(kind, seconds);
+    g_lastResult = stress::run(kind, seconds, stressTitle, stressContext);
 
     g.testRunning = false;
     g.testKind = 0;

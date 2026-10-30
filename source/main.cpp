@@ -238,7 +238,7 @@ const char* stageName(Stage s) {
         case Stage::HardwareDetection: return "Hardware Detection";
         case Stage::Preparation: return "Preparation";
         case Stage::LowUvQuick: return "CPU Low UV - Boot Search";
-        case Stage::LowUvValidateQuick: return "CPU Low UV - Region Validation";
+        case Stage::LowUvValidateQuick: return "CPU Low UV - Validation Test";
         case Stage::LowUvLong: return "CPU Low UV - Voltage Scan";
         case Stage::LowVminQuick: return "CPU Low VMIN - Boot Search";
         case Stage::LowVminLong: return "CPU Low VMIN - Voltage Floor Scan";
@@ -248,7 +248,7 @@ const char* stageName(Stage s) {
         case Stage::LowVminSweep918: return "CPU Low VMIN - Voltage Floor Scan";
         case Stage::LowVminValidate1020: return "CPU Low VMIN - Voltage Floor Scan";
         case Stage::LowVminFinalLong: return "CPU Low VMIN - Dynamic 1 Hour Validation";
-        case Stage::LowVminPlateauValidate: return "CPU Low VMIN - Region Validation";
+        case Stage::LowVminPlateauValidate: return "CPU Low VMIN - Validation Test";
         case Stage::VddqQuick: return "VDDQ - Quick Search";
         case Stage::VddqLong: return "VDDQ - 30 Minute Validation";
         case Stage::Vdd2Quick: return "VDD2 - Quick Search";
@@ -1311,9 +1311,16 @@ gui::View buildGuiView() {
         v.instructionLine1 = stageName(g.stage);
         v.instructionLine2 = "Confirm boot stability";
     } else if (g_vminScanScreen) {
-        v.instructionTitle = "CPU voltage scan";
-        v.instructionLine1 = "Review scan result";
-        v.instructionLine2 = "Continue when ready";
+        if (g_vminScanSuccess) {
+            v.instructionTitle = "Start the validation test";
+            v.instructionLine1 = std::to_string(g.vminValidateCount) +
+                (g.vminValidateCount == 1 ? " voltage region found" : " voltage regions found");
+            v.instructionLine2 = "A : Start test";
+        } else {
+            v.instructionTitle = "Retry the voltage scan";
+            v.instructionLine1 = "The automatic scan stopped";
+            v.instructionLine2 = "A : Retry scan";
+        }
     } else if (g_configPrompt) {
         v.instructionTitle = "Setting not ready";
         v.instructionLine1 = "Fix WRONG values";
@@ -1330,8 +1337,13 @@ gui::View buildGuiView() {
         v.instructionTitle = "Scan voltage regions";
         v.instructionLine1 = stageName(g.stage);
         v.instructionLine2 = "A : Start scan";
+    } else if (g.stage == Stage::LowUvValidateQuick || g.stage == Stage::LowVminPlateauValidate) {
+        v.instructionTitle = "Start the validation test";
+        v.instructionLine1 = std::to_string(g.vminValidateCount) +
+            (g.vminValidateCount == 1 ? " voltage region to test" : " voltage regions to test");
+        v.instructionLine2 = "A : Start test";
     } else if (g.stage == Stage::RealWorldValidate) {
-        v.instructionTitle = "Real-world validation";
+        v.instructionTitle = "Run the real-world test";
         v.instructionLine1 = "Remove all overrides";
         v.instructionLine2 = "Then run game test";
     } else if (g.stage == Stage::Complete) {
@@ -1345,9 +1357,12 @@ gui::View buildGuiView() {
     } else {
         const std::string d = guiDurationForStage(g.stage);
         if (!d.empty()) {
-            v.instructionTitle = "Start stability test";
-            v.instructionLine1 = stageName(g.stage);
-            v.instructionLine2 = d;
+            const bool candidateTest = g.stage == Stage::VddqQuick ||
+                                       g.stage == Stage::Vdd2Quick ||
+                                       g.stage == Stage::HighUvQuick;
+            v.instructionTitle = candidateTest ? "Start the stability test" : "Start the validation test";
+            v.instructionLine1 = candidateTest ? "Test the current candidate" : "Validate the current tuned settings";
+            v.instructionLine2 = "A : Start test";
         } else {
             v.instructionTitle = stageName(g.stage);
             v.instructionLine1 = "Follow the guide";
@@ -1443,7 +1458,7 @@ const char* compactStepName(Stage s) {
         case Stage::HardwareDetection: return "Hardware Detection";
         case Stage::Preparation: return "Preparation";
         case Stage::LowUvQuick: return "CPU Low UV - Boot Search";
-        case Stage::LowUvValidateQuick: return "CPU Low UV - Region Test";
+        case Stage::LowUvValidateQuick: return "CPU Low UV - Validation Test";
         case Stage::LowUvLong: return "CPU Low UV - Voltage Scan";
         case Stage::LowVminQuick: return "CPU Low VMIN - Boot Search";
         case Stage::LowVminLong: return "CPU Low VMIN - Clock Check";
@@ -1453,7 +1468,7 @@ const char* compactStepName(Stage s) {
         case Stage::LowVminSweep918: return "CPU Low VMIN - Clock Check";
         case Stage::LowVminValidate1020: return "CPU Low VMIN - Clock Check";
         case Stage::LowVminFinalLong: return "CPU Low VMIN - Validate";
-        case Stage::LowVminPlateauValidate: return "CPU Low VMIN - Plateau";
+        case Stage::LowVminPlateauValidate: return "CPU Low VMIN - Validation Test";
         case Stage::VddqQuick: return "RAM VDDQ";
         case Stage::VddqLong: return "RAM VDDQ - 30 min Validate";
         case Stage::Vdd2Quick: return "RAM VDD2";
@@ -1503,12 +1518,18 @@ void printOverrides(int row, const OverrideExpectation& e) {
 }
 
 void footerTest(int row) {
-    uiPrintf(row,     "A : Start automatic stability test");
-    uiPrintf(row + 1, "    If the test crashes, reboot and");
-    uiPrintf(row + 2, "    open the Wizard again.");
-    uiPrintf(row + 3, "+ : Known PASS / Skip step");
-    uiPrintf(row + 4, "B : Exit");
-    printResetHint(row + 4);
+    const bool candidateTest = g.stage == Stage::VddqQuick ||
+                               g.stage == Stage::Vdd2Quick ||
+                               g.stage == Stage::HighUvQuick;
+    if (candidateTest) {
+        uiPrintf(row,     "A : Start 1-minute stability test");
+        uiPrintf(row + 1, "+ : Known stable / Skip stability test");
+    } else {
+        uiPrintf(row,     "A : Start validation test");
+        uiPrintf(row + 1, "+ : Known PASS / Skip validation test");
+    }
+    uiPrintf(row + 2, "B : Exit");
+    printResetHint(row + 2);
 }
 
 
@@ -1568,33 +1589,29 @@ bool setupAutomaticTestOverrides(Stage st, HocMonClocks& before) {
 
 void renderVminScanScreen() {
     guiPageClear();
-    uiPrintf(1, "\x1b[36mBattery Wizard - CPU VOLTAGE SCAN\x1b[0m");
-    uiPrintf(3, "----------------------------------------");
-
     if (!g_vminScanSuccess) {
-        uiPrintf(5, "\x1b[31mAutomatic scan stopped\x1b[0m");
+        uiPrintf(5, "Automatic voltage scan stopped.");
         if (!g_vminScanErrorText.empty()) uiPrintf(7, "%s", g_vminScanErrorText.c_str());
         if (g_vminScanErrorRc) uiPrintf(8, "Result : 0x%08X", g_vminScanErrorRc);
-        uiPrintf(10, "Previous overrides : %s", g_vminScanRestoreOk ? "\x1b[32mRESTORED\x1b[0m" : "\x1b[31mCHECK HOC\x1b[0m");
-        uiPrintf(13, "A : Retry full scan");
+        uiPrintf(13, "A : Retry voltage scan");
         uiPrintf(14, "B : Back");
         uiPresent();
         return;
     }
-
-    uiPrintf(5, "\x1b[32mAutomatic scan complete\x1b[0m");
-    uiPrintf(7, g_scanForLowUv ? "Low UV : %d" : "Low VMIN : %d mV",
-             g_scanForLowUv ? g.lowUvGood : g.lowVminGood);
-    uiPrintf(8, "Different voltage regions : %d", g.vminValidateCount);
-    int row = 10;
+    uiPrintf(5, "Automatic scan complete.");
+    uiPrintf(7, "The Wizard found %d voltage region%s to validate.",
+             g.vminValidateCount, g.vminValidateCount == 1 ? "" : "s");
+    int row = 9;
     for (int i = 0; i < g.vminValidateCount && i < 6; ++i)
-        uiPrintf(row++, " %d. %s @ ~%d mV", i + 1, formatClock(g.vminValidateHz[i]).c_str(), g.vminValidateMv[i]);
-    row += 2;
-    uiPrintf(row++, "A : Start automatic stability test");
-    uiPrintf(row++, "    If the test crashes, reboot and");
-    uiPrintf(row++, "    open the Wizard again.");
-    uiPrintf(row++, "+ : Known PASS / Skip step");
+        uiPrintf(row++, "%d. %s @ ~%d mV", i + 1,
+                 formatClock(g.vminValidateHz[i]).c_str(), g.vminValidateMv[i]);
+    row++;
+    uiPrintf(row++, "Each region will be tested for 1 minute.");
+    row++;
+    uiPrintf(row++, "A : Start validation test");
+    uiPrintf(row++, "+ : Known PASS / Skip validation test");
     uiPrintf(row++, "B : Exit");
+    printResetHint(row - 1);
     uiPresent();
 }
 
@@ -1956,86 +1973,51 @@ void renderPreparation() {
 bool isVminSweepStage(Stage st);
 
 void renderValidationObjective(int& row) {
-    HocMonConfig current{};
-    bool haveCurrent = R_SUCCEEDED(hocmonGetConfig251(&current));
-    if (!haveCurrent) haveCurrent = readHocConfigIni(current);
-
-    uiPrintf(row++, "Objective:");
     switch (g.stage) {
         case Stage::VddqQuick:
-        case Stage::VddqLong: {
-            const int value = g.stage == Stage::VddqQuick ? g.vddqTest : g.vddqGood;
-            uiPrintf(row++, "VDDQ %d mV will be tested now.", value);
-            uiPrintf(row++, "Current VDDQ : %s", haveCurrent ? formatMv((int)(current.vddqUv / 1000U)).c_str() : "unavailable");
-            break;
-        }
-        case Stage::Vdd2Quick: {
-            uiPrintf(row++, "VDD2 %s will be tested now.", formatVdd2(g.vdd2TestUv).c_str());
-            uiPrintf(row++, "Current VDD2 : %s", haveCurrent ? formatVdd2((int)current.vdd2Uv).c_str() : "unavailable");
-            break;
-        }
+            uiPrintf(row++, "This 1-minute test checks the current VDDQ candidate.");
+            uiPrintf(row++, "Candidate : %d mV", g.vddqTest); break;
+        case Stage::VddqLong:
+            uiPrintf(row++, "This test validates the final VDDQ value.");
+            uiPrintf(row++, "VDDQ : %d mV", g.vddqGood); break;
+        case Stage::Vdd2Quick:
+            uiPrintf(row++, "This 1-minute test checks the current VDD2 candidate.");
+            uiPrintf(row++, "Candidate : %s", formatVdd2(g.vdd2TestUv).c_str()); break;
         case Stage::Vdd2Long:
-            uiPrintf(row++, "Final VDDQ + VDD2 pair will be tested now.");
-            if (haveCurrent) {
-                uiPrintf(row++, "Current VDDQ : %s", formatMv((int)(current.vddqUv / 1000U)).c_str());
-                uiPrintf(row++, "Current VDD2 : %s", formatVdd2((int)current.vdd2Uv).c_str());
-            }
-            break;
-        case Stage::HighUvQuick:
-        case Stage::HighUvLong: {
-            const int value = g.stage == Stage::HighUvQuick ? g.highUvTest : g.highUvGood;
-            uiPrintf(row++, "High UV %d will be tested now.", value);
-            if (haveCurrent) uiPrintf(row++, "Current High UV : %d", current.highUv);
-            else uiPrintf(row++, "Current High UV : unavailable");
-            break;
-        }
+            uiPrintf(row++, "This test validates the final RAM voltage pair.");
+            uiPrintf(row++, "VDDQ : %d mV", g.vddqGood);
+            uiPrintf(row++, "VDD2 : %s", formatVdd2(g.vdd2GoodUv).c_str()); break;
         case Stage::RamBoostValidate:
-            uiPrintf(row++, "Tuned RAM voltages will be tested now.");
-            uiPrintf(row++, "Boost operating state validation.");
-            if (haveCurrent) {
-                uiPrintf(row++, "Current VDDQ : %s", formatMv((int)(current.vddqUv / 1000U)).c_str());
-                uiPrintf(row++, "Current VDD2 : %s", formatVdd2((int)current.vdd2Uv).c_str());
-            }
-            break;
+            uiPrintf(row++, "This test validates tuned RAM at Nintendo Boost clocks.");
+            uiPrintf(row++, "VDDQ : %d mV", g.vddqGood);
+            uiPrintf(row++, "VDD2 : %s", formatVdd2(g.vdd2GoodUv).c_str()); break;
         case Stage::Ram1331Validate:
-            uiPrintf(row++, "Tuned RAM voltages will be tested now.");
-            uiPrintf(row++, "Handheld operating state validation.");
-            if (haveCurrent) {
-                uiPrintf(row++, "Current VDDQ : %s", formatMv((int)(current.vddqUv / 1000U)).c_str());
-                uiPrintf(row++, "Current VDD2 : %s", formatVdd2((int)current.vdd2Uv).c_str());
-            }
-            break;
+            uiPrintf(row++, "This test validates tuned RAM at handheld clocks.");
+            uiPrintf(row++, "VDDQ : %d mV", g.vddqGood);
+            uiPrintf(row++, "VDD2 : %s", formatVdd2(g.vdd2GoodUv).c_str()); break;
+        case Stage::HighUvQuick:
+            uiPrintf(row++, "This 1-minute test checks the current High UV candidate.");
+            uiPrintf(row++, "Candidate : %d", g.highUvTest); break;
+        case Stage::HighUvLong:
+            uiPrintf(row++, "This test validates the final High UV value.");
+            uiPrintf(row++, "High UV : %d", g.highUvGood); break;
         case Stage::BoostCpuRamValidate:
-            uiPrintf(row++, "Final High UV CPU-memtester");
-            uiPrintf(row++, "will run at 1785 / 76.8 / 1600.");
-            break;
+            uiPrintf(row++, "This test validates High UV at Nintendo Boost clocks.");
+            uiPrintf(row++, "CPU / GPU / RAM : 1785 / 76.8 / 1600 MHz"); break;
         case Stage::NormalMatrixValidate:
-            uiPrintf(row++, "Critical Low CPU + RAM stability");
-            uiPrintf(row++, "will be tested now at 1020 / 1331.");
-            break;
-        case Stage::NormalMemValidate:
-            uiPrintf(row++, "Final handheld RAM stability will be tested now.");
-            break;
-        case Stage::NormalGpuValidate:
-            uiPrintf(row++, "Final handheld GPU stability will be tested now.");
-            break;
-        case Stage::BoostMatrixValidate:
-            uiPrintf(row++, "Final Boost CPU stability will be tested now.");
-            break;
-        case Stage::BoostMemValidate:
-            uiPrintf(row++, "Final Boost RAM stability will be tested now.");
-            break;
+            uiPrintf(row++, "This test validates CPU + RAM at handheld clocks.");
+            uiPrintf(row++, "CPU / GPU / RAM : 1020 / 384 / 1331 MHz"); break;
         case Stage::BoostCpuMemValidate:
-            uiPrintf(row++, "High UV + high RAM combined stability");
-            uiPrintf(row++, "will run at 1785 / 76.8 / 1600.");
-            break;
+            uiPrintf(row++, "This test validates High UV together with tuned RAM.");
+            uiPrintf(row++, "CPU / GPU / RAM : 1785 / 76.8 / 1600 MHz"); break;
+        case Stage::NormalMemValidate: uiPrintf(row++, "This test validates RAM at handheld clocks."); break;
+        case Stage::NormalGpuValidate: uiPrintf(row++, "This test validates GPU stability at handheld clocks."); break;
+        case Stage::BoostMatrixValidate: uiPrintf(row++, "This test validates CPU stability at Boost clocks."); break;
+        case Stage::BoostMemValidate: uiPrintf(row++, "This test validates RAM stability at Boost clocks."); break;
         case Stage::LowVminFinalLong:
-            uiPrintf(row++, "Low VMIN stability will be tested now.");
-            uiPrintf(row++, "Current Low VMIN : %s", haveCurrent ? formatMv(current.lowVminMv).c_str() : "unavailable");
-            break;
-        default:
-            uiPrintf(row++, "This stability step will be tested now.");
-            break;
+            uiPrintf(row++, "This test validates the final Low VMIN value.");
+            uiPrintf(row++, "Low VMIN : %d mV", g.lowVminGood); break;
+        default: uiPrintf(row++, "This test validates the current tuned settings."); break;
     }
     row++;
 }
@@ -2155,22 +2137,16 @@ void renderTestStage() {
     }
 
     if (g.stage == Stage::LowUvValidateQuick || g.stage == Stage::LowVminPlateauValidate) {
-        const bool lowUv = g.stage == Stage::LowUvValidateQuick;
-        uiPrintf(row++, lowUv ? "CPU Low UV candidate : %d" : "CPU Low VMIN candidate : %d mV",
-                 lowUv ? g.lowUvGood : g.lowVminGood);
-        uiPrintf(row++, "Voltage regions to test : %d", g.vminValidateCount);
+        uiPrintf(row++, "Voltage regions to validate : %d", g.vminValidateCount);
         row++;
         for (int i = 0; i < g.vminValidateCount && i < 6; ++i)
-            uiPrintf(row++, " %d. %s @ ~%d mV", i + 1,
+            uiPrintf(row++, "%d. %s @ ~%d mV", i + 1,
                      formatClock(g.vminValidateHz[i]).c_str(), g.vminValidateMv[i]);
         row++;
-        uiPrintf(row++, "Wizard sets each override.");
-        uiPrintf(row++, "Each CPU frequency runs for 1 minute.");
-        row += 2;
-        uiPrintf(row++, "A : Start automatic stability test");
-        uiPrintf(row++, "    If the test crashes, reboot and");
-        uiPrintf(row++, "    open the Wizard again.");
-        uiPrintf(row++, "+ : Known PASS / Skip step");
+        uiPrintf(row++, "Each region will be tested for 1 minute.");
+        row++;
+        uiPrintf(row++, "A : Start validation test");
+        uiPrintf(row++, "+ : Known PASS / Skip validation test");
         uiPrintf(row++, "B : Exit");
         printResetHint(row - 1);
         return;
@@ -2181,8 +2157,12 @@ void renderTestStage() {
     const bool hasTest = testPlan(g.stage, kind, seconds);
     if (hasTest) {
         renderValidationObjective(row);
-        uiPrintf(row++, "Test:");
-        uiPrintf(row++, "%s - %s", seconds == 60 ? "1 min" : (seconds == 1800 ? "30 min" : "1 hour"), compactTestName(kind));
+        const bool candidateTest = g.stage == Stage::VddqQuick ||
+                                   g.stage == Stage::Vdd2Quick ||
+                                   g.stage == Stage::HighUvQuick;
+        uiPrintf(row++, candidateTest ? "Stability test : %s" : "Validation test : %s",
+                 seconds == 60 ? "1 minute" : (seconds == 1800 ? "30 minutes" : "1 hour"));
+        uiPrintf(row++, "Test type : %s", compactTestName(kind));
         footerTest(row + 1);
     }
 }
@@ -2199,7 +2179,7 @@ void renderRealWorld() {
     uiPrintf(13, "Home + Sleep/Wake");
     uiPrintf(15, "Keys:");
     uiPrintf(16, "A : PASS");
-    uiPrintf(17, "+ : Known PASS / Skip step");
+    uiPrintf(17, "+ : Known PASS / Skip real-world test");
     uiPrintf(18, "X : FAIL");
     uiPrintf(19, "B : Exit");
     printResetHint(19);

@@ -398,6 +398,15 @@ void drawMainCard() {
                 continue;
             }
 
+            const bool numberedRow = raw.size() >= 3 && std::isdigit(static_cast<unsigned char>(raw[0])) &&
+                                     raw[1] == '.' && raw[2] == ' ';
+            if (numberedRow) {
+                drawText(x + 28, by, 15, C_TEXT, fitText(raw, 15, w - 56));
+                by += 22;
+                ++shown;
+                continue;
+            }
+
             const size_t colon = raw.find(':');
             const bool valueRow = colon != std::string::npos && colon > 0 && colon < raw.size() - 1 &&
                                   raw.find("http") != 0;

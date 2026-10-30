@@ -28,6 +28,7 @@ CXXFLAGS    := $(CFLAGS) -fno-rtti -fno-exceptions -std=gnu++17
 ASFLAGS     := -g $(ARCH)
 LDFLAGS     = -specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 
+PKGCONF     := $(PORTLIBS)/bin/aarch64-none-elf-pkg-config
 FREETYPE_LIBS := $(shell $(PKGCONF) --static --libs freetype2 2>/dev/null)
 ifeq ($(strip $(FREETYPE_LIBS)),)
 FREETYPE_LIBS := -lfreetype -lbz2 -lpng16 -lz -lharfbuzz -pthread -lm

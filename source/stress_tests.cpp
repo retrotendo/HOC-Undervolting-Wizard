@@ -16,6 +16,7 @@
 #include "stress_tests.hpp"
 #include "cpu_stress.h"
 #include "mt_cpu.h"
+#include "gui_console.hpp"
 
 #include <switch.h>
 #include <deko3d.h>
@@ -372,47 +373,24 @@ const char* creditLine(Kind kind) {
 }
 
 void renderProgress(Kind kind, int durationSeconds, std::uint64_t elapsedMs, const Context& c) {
-    const std::uint64_t totalMs = std::uint64_t(durationSeconds) * 1000ULL;
-    const unsigned pct = totalMs ? unsigned((elapsedMs >= totalMs ? totalMs : elapsedMs) * 100ULL / totalMs) : 100u;
-    const unsigned barWidth = 36;
-    const unsigned filled = pct * barWidth / 100u;
-
-    consoleClear();
-    std::printf("\x1b[1;1H\x1b[36mHOC Undervolting Wizard\x1b[0m\n");
-    std::printf("Built-in %s\n", kindName(kind));
-    std::printf("%s\n", creditLine(kind));
-    std::printf("GPLv2-only | NO WARRANTY | Full notices in repo\n");
-    std::printf("------------------------------------------------------------\n\n");
-
-    const std::uint64_t sec = elapsedMs / 1000ULL;
-    const std::uint64_t target = durationSeconds;
-    std::printf("Time       %02llu:%02llu / %02llu:%02llu\n",
-        (unsigned long long)(sec / 60ULL), (unsigned long long)(sec % 60ULL),
-        (unsigned long long)(target / 60ULL), (unsigned long long)(target % 60ULL));
-
-    if (kind == Kind::Cpu || kind == Kind::Combined)
-        std::printf("CPU passes  %llu\n", (unsigned long long)c.cpuIterations.load(std::memory_order_relaxed));
-
+    gui::StressView v{};
+    v.title = kindName(kind);
+    v.subtitle = creditLine(kind);
+    v.detail1 = "Do not leave the app while the test is running.";
+    v.detail2 = "The Wizard records PASS/FAIL automatically when the test ends.";
+    v.elapsedMs = elapsedMs;
+    v.durationSeconds = durationSeconds;
+    v.cpuPasses = c.cpuIterations.load(std::memory_order_relaxed);
+    v.ramLoops = c.ramLoops.load(std::memory_order_relaxed);
+    v.gpuPasses = c.gpuIterations.load(std::memory_order_relaxed);
+    v.errors = c.errors.load(std::memory_order_relaxed);
+    v.mismatches = c.mismatches.load(std::memory_order_relaxed);
     if (kind == Kind::Ram || kind == Kind::Combined) {
-        std::printf("RAM loops   %llu\n", (unsigned long long)c.ramLoops.load(std::memory_order_relaxed));
-        std::printf("RAM test    %s\n", c.ramTest.load(std::memory_order_relaxed));
-        const std::uint64_t ram = c.ramBytes.load(std::memory_order_relaxed);
-        if (ram)
-            std::printf("RAM mapped  %llu MiB\n", (unsigned long long)(ram / 1024ULL / 1024ULL));
+        const char* ramTest = c.ramTest.load(std::memory_order_relaxed);
+        v.ramTest = ramTest ? ramTest : "-";
+        v.ramBytes = c.ramBytes.load(std::memory_order_relaxed);
     }
-
-    if (kind == Kind::Gpu)
-        std::printf("GPU passes  %llu\n", (unsigned long long)c.gpuIterations.load(std::memory_order_relaxed));
-
-    std::printf("Errors      %llu\n", (unsigned long long)c.errors.load(std::memory_order_relaxed));
-    std::printf("Mismatches  %llu\n", (unsigned long long)c.mismatches.load(std::memory_order_relaxed));
-
-    std::printf("\n[");
-    for (unsigned i = 0; i < barWidth; ++i) std::putchar(i < filled ? '#' : '-');
-    std::printf("] %u%%\n\n", pct);
-    std::printf("Do not leave the app while the test is running.\n");
-    std::printf("[B] Cancel test (does NOT count as FAIL)\n");
-    consoleUpdate(nullptr);
+    gui::presentStress(v);
 }
 
 } // namespace

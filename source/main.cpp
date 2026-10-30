@@ -413,7 +413,7 @@ bool sampleVminVoltage(Stage s, int sweepIndex = -1, int sweepTotal = 0) {
             std::printf("\x1b[7;%dHCPU       : %s", UI_COL, formatClock(g_overrideCheck.expected.cpuHz).c_str());
             std::printf("\x1b[8;%dHGPU / RAM : 384 / 1331.2 MHz", UI_COL);
             std::printf("\x1b[10;%dHSettling voltage %d / %d...", UI_COL, settle + 1, kSettleReads);
-            consoleUpdate(nullptr);
+            uiPresent();
             svcSleepThread(700'000'000);
             HocMonClocks ignored{};
             if (R_SUCCEEDED(hocmonGetClocks(&ignored))) latest = ignored;
@@ -432,7 +432,7 @@ bool sampleVminVoltage(Stage s, int sweepIndex = -1, int sweepTotal = 0) {
             std::printf("\x1b[8;%dHGPU / RAM : 384 / 1331.2 MHz", UI_COL);
             std::printf("\x1b[10;%dHReading CPU voltage sample %d / %d...", UI_COL, i + 1, kSamples);
             if (attempt > 0) std::printf("\x1b[12;%dHRetrying noisy measurement...", UI_COL);
-            consoleUpdate(nullptr);
+            uiPresent();
             svcSleepThread(700'000'000);
 
             HocMonClocks cur{};
@@ -1268,6 +1268,7 @@ std::string guiDurationForStage(Stage st) {
 gui::View buildGuiView() {
     gui::View v{};
     v.version = HOC_WIZARD_VERSION;
+    v.stageTitle = stageName(g.stage);
     v.activeStep = guiProgressStep(g.stage);
     v.pulse = g_guiPulse;
 
@@ -1381,7 +1382,12 @@ gui::View buildGuiView() {
 }
 
 void guiPageClear() {
-    gui::draw(buildGuiView());
+    gui::begin(buildGuiView());
+}
+
+void uiPresent() {
+    if (gui::isInitialized()) gui::present();
+    else uiPresent();
 }
 
 void uiPrintf(int row, const char* fmt, ...) {
@@ -1534,7 +1540,7 @@ void renderVminScanScreen() {
         uiPrintf(10, "Previous overrides : %s", g_vminScanRestoreOk ? "\x1b[32mRESTORED\x1b[0m" : "\x1b[31mCHECK HOC\x1b[0m");
         uiPrintf(13, "A : Retry full scan");
         uiPrintf(14, "B : Back");
-        consoleUpdate(nullptr);
+        uiPresent();
         return;
     }
 
@@ -1551,7 +1557,7 @@ void renderVminScanScreen() {
     uiPrintf(row++, "    open the Wizard again.");
     uiPrintf(row++, "+ : Known PASS / Skip step");
     uiPrintf(row++, "B : Exit");
-    consoleUpdate(nullptr);
+    uiPresent();
 }
 
 void renderHardwareDetection() {
@@ -1678,7 +1684,7 @@ void renderBootPrompt() {
         uiPrintf(row++, "X : Treat as unstable and recover");
     }
     uiPrintf(row + 1, "B : Exit and decide later");
-    consoleUpdate(nullptr);
+    uiPresent();
 }
 
 void printSingleConfigCheck(int row, const char* label, const std::string& required,
@@ -1724,7 +1730,7 @@ void renderConfigDebug() {
         uiPrintf(7, "\x1b[31mRaw config read failed\x1b[0m");
         uiPrintf(8, "Result : 0x%08X", g_configDebugRc);
         uiPrintf(11, "B : Back");
-        consoleUpdate(nullptr);
+        uiPresent();
         return;
     }
 
@@ -1743,7 +1749,7 @@ void renderConfigDebug() {
     }
     uiPrintf(21, "A : Next page    X : Previous page");
     uiPrintf(22, "B : Back to Preparation check");
-    consoleUpdate(nullptr);
+    uiPresent();
 }
 
 void renderConfigPrompt() {
@@ -1757,7 +1763,7 @@ void renderConfigPrompt() {
         uiPrintf(r + 1, "Result : 0x%08X", g_configCheck.rc);
         uiPrintf(r + 4, "A : Check again");
         uiPrintf(r + 5, "B : Back");
-        consoleUpdate(nullptr);
+        uiPresent();
         return;
     }
 
@@ -1823,7 +1829,7 @@ void renderConfigPrompt() {
     } else {
         uiPrintf(row + 5, "B : Back");
     }
-    consoleUpdate(nullptr);
+    uiPresent();
 }
 
 void renderAutoPrepConfirm() {
@@ -1846,7 +1852,7 @@ void renderAutoPrepConfirm() {
     else
         uiPrintf(16, "A : Confirm - set value");
     uiPrintf(17, "B : Cancel");
-    consoleUpdate(nullptr);
+    uiPresent();
 }
 
 void renderRebootConfirm() {
@@ -1875,7 +1881,7 @@ void renderRebootConfirm() {
     uiPrintf(17, "5. Open this Wizard again.");
     uiPrintf(20, "A : Reboot now");
     uiPrintf(21, "B : Back");
-    consoleUpdate(nullptr);
+    uiPresent();
 }
 
 void renderPreparation() {
@@ -2186,7 +2192,7 @@ void renderInterruptedPrompt() {
     uiPrintf(14, "A : YES - count as FAIL");
     uiPrintf(15, "X : NO - interrupted manually; run again");
     uiPrintf(16, "B : Exit and decide later");
-    consoleUpdate(nullptr);
+    uiPresent();
 }
 
 void renderOverridePrompt() {
@@ -2215,7 +2221,7 @@ void renderOverridePrompt() {
 
     uiPrintf(19, "A : Try automatic setup again");
     uiPrintf(20, "B : Back");
-    consoleUpdate(nullptr);
+    uiPresent();
 }
 
 void renderResultScreen() {
@@ -2237,7 +2243,7 @@ void renderResultScreen() {
     if (!g_lastResult.detail.empty()) uiPrintf(11, "%s", g_lastResult.detail.c_str());
     if (!g_resultAction.empty()) uiPrintf(13, "%s", g_resultAction.c_str());
     uiPrintf(17, "A : Continue");
-    consoleUpdate(nullptr);
+    uiPresent();
 }
 
 void render() {
@@ -2255,7 +2261,7 @@ void render() {
         uiPrintf(1, "\x1b[1;31mReset ALL wizard progress?\x1b[0m");
         uiPrintf(4, "A : Yes, reset");
         uiPrintf(5, "B : Cancel");
-        consoleUpdate(nullptr);
+        uiPresent();
         return;
     }
 
@@ -2264,7 +2270,7 @@ void render() {
     else if (g.stage == Stage::RealWorldValidate) renderRealWorld();
     else if (g.stage == Stage::Complete) renderComplete();
     else renderTestStage();
-    consoleUpdate(nullptr);
+    uiPresent();
 }
 
 
@@ -2684,7 +2690,7 @@ bool sampleCpuVoltageAt(u32 cpuHz, int index, int total, int& outMv) {
             uiPrintf(7, "CPU       : %s", formatClock(cpuHz).c_str());
             uiPrintf(8, "GPU / RAM : 384 / 1331.2 MHz");
             uiPrintf(10, "Settling voltage %d / %d...", settle + 1, kSettleReads);
-            consoleUpdate(nullptr);
+            uiPresent();
             svcSleepThread(700'000'000);
             HocMonClocks ignored{};
             hocmonGetClocks(&ignored);
@@ -2701,7 +2707,7 @@ bool sampleCpuVoltageAt(u32 cpuHz, int index, int total, int& outMv) {
             uiPrintf(8, "GPU / RAM : 384 / 1331.2 MHz");
             uiPrintf(10, "Reading CPU voltage sample %d / %d...", sample + 1, kSamples);
             if (attempt > 0) uiPrintf(12, "Retrying noisy measurement...");
-            consoleUpdate(nullptr);
+            uiPresent();
             svcSleepThread(700'000'000);
 
             HocMonClocks cur{};
@@ -2839,7 +2845,7 @@ void runAutomaticRegionValidation(bool forLowUv) {
         uiPrintf(8, "GPU : 384 MHz");
         uiPrintf(9, "RAM : 1331.2 MHz");
         uiPrintf(11, "Running built-in CPU test for 1 minute...");
-        consoleUpdate(nullptr);
+        uiPresent();
 
         rc = hocmonSetOverride(HocMonModule_CPU, hz);
         if (R_SUCCEEDED(rc)) rc = hocmonSetOverride(HocMonModule_GPU, CLOCK_GPU_NORMAL_HZ);
@@ -3008,7 +3014,7 @@ int main(int argc, char** argv) {
             std::printf("  5. Start HOC Undervolting Wizard again.\n\n");
             std::printf("Do NOT launch hbmenu from the Album for stability testing.\n\n");
             std::printf("[B] Exit\n");
-            consoleUpdate(nullptr);
+            uiPresent();
             if (k & HidNpadButton_B) break;
             svcSleepThread(20'000'000);
         }
@@ -3039,7 +3045,7 @@ int main(int argc, char** argv) {
         std::printf("By continuing, you accept all risk and responsibility.\n\n");
         std::printf("[A] I understand - Continue\n");
         std::printf("[B] Exit\n");
-        consoleUpdate(nullptr);
+        uiPresent();
 
         if (k & HidNpadButton_A) riskAccepted = true;
         else if (k & HidNpadButton_B) {
@@ -3050,6 +3056,25 @@ int main(int argc, char** argv) {
     }
 
     if (!riskAccepted) {
+        consoleExit(nullptr);
+        return 0;
+    }
+
+    consoleExit(nullptr);
+    if (!gui::init()) {
+        consoleInit(nullptr);
+        while (appletMainLoop()) {
+            padUpdate(&pad);
+            consoleClear();
+            std::printf("\x1b[1;1H\x1b[31mHOC Undervolting Wizard - GUI ERROR\x1b[0m\n");
+            std::printf("------------------------------------------------------------\n\n");
+            std::printf("Could not initialize the graphical interface.\n");
+            std::printf("The Switch shared font / framebuffer backend is unavailable.\n\n");
+            std::printf("[B] Exit\n");
+            consoleUpdate(nullptr);
+            if (padGetButtonsDown(&pad) & HidNpadButton_B) break;
+            svcSleepThread(20'000'000);
+        }
         consoleExit(nullptr);
         return 0;
     }
@@ -3295,7 +3320,7 @@ int main(int argc, char** argv) {
                 guiPageClear();
                 uiPrintf(6, "\x1b[32mSetting verified.\x1b[0m");
                 uiPrintf(8, "Restarting console...");
-                consoleUpdate(nullptr);
+                uiPresent();
                 svcSleepThread(400'000'000);
 
                 g_rebootError = appletRequestToReboot();
@@ -3307,7 +3332,7 @@ int main(int argc, char** argv) {
                     uiPrintf(7, "Result : 0x%08X", g_rebootError);
                     uiPrintf(9, "Restart CFW manually, then reopen Wizard.");
                     uiPrintf(11, "B : Exit");
-                    consoleUpdate(nullptr);
+                    uiPresent();
                     while (appletMainLoop()) {
                         padUpdate(&pad);
                         if (padGetButtonsDown(&pad) & HidNpadButton_B) break;
@@ -3473,7 +3498,7 @@ int main(int argc, char** argv) {
         svcSleepThread(20'000'000);
     }
 
-    consoleExit(nullptr);
+    gui::shutdown();
     return 0;
 }
 

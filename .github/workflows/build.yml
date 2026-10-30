@@ -13,8 +13,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install GUI font dependency
-        run: dkp-pacman -Syu --noconfirm switch-freetype
+      - name: Install GUI font dependencies
+        run: dkp-pacman -Sy --noconfirm switch-freetype switch-harfbuzz
 
       - name: Build
         run: make -j2

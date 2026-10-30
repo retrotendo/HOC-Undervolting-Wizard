@@ -1,0 +1,28 @@
+name: Fix beta44 build
+
+on:
+  push:
+    branches:
+      - beta44-real-gui
+    paths:
+      - '.github/workflows/fix-beta44-build.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: beta44-real-gui
+      - name: Apply build fixes
+        run: python3 tools/fix_beta44_build.py
+      - name: Commit build fixes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add source/main.cpp
+          git commit -m 'Fix beta44 GUI build integration'
+          git push origin HEAD:beta44-real-gui

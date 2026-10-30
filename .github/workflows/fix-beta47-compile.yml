@@ -1,0 +1,28 @@
+name: Fix beta47 compile
+
+on:
+  push:
+    branches:
+      - beta47-preparation-panel
+    paths:
+      - '.github/workflows/fix-beta47-compile.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: beta47-preparation-panel
+      - name: Apply beta47 compile fix
+        run: python3 tools/fix_beta47_compile.py
+      - name: Commit compile fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add source/main.cpp
+          git commit -m 'Fix preparation display formatting compile order'
+          git push origin HEAD:beta47-preparation-panel

@@ -1,0 +1,28 @@
+name: Apply v1 GUI beta patch
+
+on:
+  push:
+    branches:
+      - v1-gui-beta
+    paths:
+      - '.github/workflows/apply-v1-gui.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v1-gui-beta
+      - name: Apply GUI integration
+        run: python3 tools/patch_v1_gui.py
+      - name: Commit GUI integration
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add source/main.cpp Makefile
+          git commit -m 'Integrate minimal fullscreen GUI'
+          git push origin HEAD:v1-gui-beta

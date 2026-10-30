@@ -22,6 +22,7 @@ constexpr const char* APP_DIR   = "sdmc:/switch/HOC-Undervolting-Wizard";
 constexpr const char* STATE     = "sdmc:/switch/HOC-Undervolting-Wizard/state.ini";
 constexpr const char* STATE_TMP = "sdmc:/switch/HOC-Undervolting-Wizard/state.tmp";
 constexpr const char* RESULTS   = "sdmc:/switch/HOC-Undervolting-Wizard/results.txt";
+constexpr const char* DISCLAIMER_ACK = "sdmc:/switch/HOC-Undervolting-Wizard/disclaimer.accepted";
 constexpr const char* LEGACY_STATE = "sdmc:/switch/HOC-Battery-Wizard/state.ini";
 constexpr const char* HOC_CONFIG_INI = "sdmc:/config/horizon-oc/config.ini";
 constexpr const char* HOC_CONFIG_TMP = "sdmc:/config/horizon-oc/config.ini.wizard.tmp";
@@ -2248,6 +2249,36 @@ void renderResultScreen() {
     uiPresent();
 }
 
+std::string rebootSavedValueText() {
+    const u32 mask = g_configCheck.mask;
+    if (mask & Config_Prepare) return "Preparation values were saved successfully.";
+    if (mask & Config_LowUv) return "Low UV " + std::to_string(targetLowUv()) + " was saved successfully.";
+    if (mask & Config_LowVmin) return "Low VMIN " + std::to_string(targetLowVmin()) + " mV was saved successfully.";
+    if ((mask & Config_Vddq) && (mask & Config_Vdd2)) return "VDDQ and VDD2 were saved successfully.";
+    if (mask & Config_Vddq) return "VDDQ " + std::to_string(targetVddqMv()) + " mV was saved successfully.";
+    if (mask & Config_Vdd2) return "VDD2 " + formatVdd2(targetVdd2Uv()) + " was saved successfully.";
+    if (mask & Config_HighUv) return "High UV " + std::to_string(targetHighUv()) + " was saved successfully.";
+    return "The requested value was saved successfully.";
+}
+
+void renderRebootModal() {
+    gui::ModalView m{};
+    m.version = HOC_WIZARD_VERSION;
+    m.eyebrow = "REBOOT REQUIRED";
+    m.title = "Apply the new setting";
+    m.body = {
+        rebootSavedValueText(),
+        "A reboot is required to apply this setting.",
+        "After normal CFW has booted, open HOC Undervolting Wizard again to continue.",
+        "If normal CFW does not boot, freezes or crashes:",
+        "Boot CFW No OC, restore the previous known-good value, reboot normal CFW and open the Wizard again."
+    };
+    m.primaryAction = "Reboot now";
+    m.secondaryAction = "Back";
+    m.tone = gui::ModalTone::Amber;
+    gui::presentModal(m);
+}
+
 void render() {
     guiPageClear();
     if (g_bootPrompt) { renderBootPrompt(); return; }
@@ -2256,7 +2287,7 @@ void render() {
     if (g_configDebugScreen) { renderConfigDebug(); return; }
     if (g_configPrompt) { renderConfigPrompt(); return; }
     if (g_autoPrepConfirm) { renderAutoPrepConfirm(); return; }
-    if (g_rebootConfirm) { renderRebootConfirm(); return; }
+    if (g_rebootConfirm) { renderRebootModal(); return; }
     if (g_overridePrompt) { renderOverridePrompt(); return; }
     if (g_resultScreen) { renderResultScreen(); return; }
     if (g_resetConfirm) {
@@ -3024,44 +3055,7 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    if (updater::startupCheckAndPrompt(pad, argc, argv)) {
-        consoleExit(nullptr);
-        return 0;
-    }
-
-    bool riskAccepted = false;
-    while (appletMainLoop() && !riskAccepted) {
-        padUpdate(&pad);
-        const u64 k = padGetButtonsDown(&pad);
-        consoleClear();
-        std::printf("\x1b[1;1H\x1b[31mHOC Undervolting Wizard - WARNING\x1b[0m\n");
-        std::printf("------------------------------------------------------------\n\n");
-        std::printf("\x1b[1mUSE AT YOUR OWN RISK\x1b[0m\n\n");
-        std::printf("This Wizard changes CPU/RAM voltage settings and runs\n");
-        std::printf("stability tests. Unstable settings can cause crashes,\n");
-        std::printf("boot failures, data/save corruption or data loss.\n\n");
-        std::printf("In extreme cases, hardware damage may also be possible.\n\n");
-        std::printf("The author and contributors provide no warranty and accept\n");
-        std::printf("no liability for data loss, software damage, hardware\n");
-        std::printf("damage or any other consequences of using this Wizard.\n\n");
-        std::printf("By continuing, you accept all risk and responsibility.\n\n");
-        std::printf("[A] I understand - Continue\n");
-        std::printf("[B] Exit\n");
-        uiPresent();
-
-        if (k & HidNpadButton_A) riskAccepted = true;
-        else if (k & HidNpadButton_B) {
-            consoleExit(nullptr);
-            return 0;
-        }
-        svcSleepThread(20'000'000);
-    }
-
-    if (!riskAccepted) {
-        consoleExit(nullptr);
-        return 0;
-    }
-
+    // Full-memory mode can use the graphical backend for every startup screen.
     consoleExit(nullptr);
     if (!gui::init()) {
         consoleInit(nullptr);
@@ -3081,7 +3075,62 @@ int main(int argc, char** argv) {
         return 0;
     }
 
+    if (updater::startupCheckAndPrompt(pad, argc, argv)) {
+        gui::shutdown();
+        return 0;
+    }
+
     ensureDir();
+
+    // The disclaimer is a one-time acknowledgement, independent of Wizard reset.
+    // Existing installations with a state file have necessarily already passed it.
+    bool riskAccepted = access(DISCLAIMER_ACK, F_OK) == 0 || access(STATE, F_OK) == 0;
+    if (riskAccepted && access(DISCLAIMER_ACK, F_OK) != 0) {
+        std::ofstream ack(DISCLAIMER_ACK, std::ios::trunc);
+        if (ack) { ack << "accepted=1\n"; ack.close(); fsdevCommitDevice("sdmc"); }
+    }
+
+    while (appletMainLoop() && !riskAccepted) {
+        padUpdate(&pad);
+        const u64 k = padGetButtonsDown(&pad);
+
+        gui::ModalView m{};
+        m.version = HOC_WIZARD_VERSION;
+        m.eyebrow = "SAFETY NOTICE";
+        m.title = "Use at your own risk";
+        m.body = {
+            "This Wizard changes CPU and RAM voltage settings and runs stability tests.",
+            "Unstable settings can cause crashes, boot failures, save/data corruption or data loss.",
+            "In extreme cases, hardware damage may also be possible.",
+            "The author and contributors provide no warranty and accept no liability for resulting software, data or hardware damage.",
+            "By continuing, you accept all risk and responsibility."
+        };
+        m.primaryAction = "I understand - continue";
+        m.secondaryAction = "Exit";
+        m.tone = gui::ModalTone::Amber;
+        gui::presentModal(m);
+
+        if (k & HidNpadButton_A) {
+            std::ofstream ack(DISCLAIMER_ACK, std::ios::trunc);
+            if (ack) {
+                ack << "accepted=1\n";
+                ack.flush();
+                ack.close();
+                fsdevCommitDevice("sdmc");
+                riskAccepted = true;
+            }
+        } else if (k & HidNpadButton_B) {
+            gui::shutdown();
+            return 0;
+        }
+        svcSleepThread(20'000'000);
+    }
+
+    if (!riskAccepted) {
+        gui::shutdown();
+        return 0;
+    }
+
     migrateLegacyState();
     if (!loadState()) saveState();
 

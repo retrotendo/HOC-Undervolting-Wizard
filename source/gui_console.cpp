@@ -372,6 +372,109 @@ void endFrame() {
     g_pixels = nullptr;
 }
 
+u32 modalToneColor(ModalTone tone) {
+    switch (tone) {
+        case ModalTone::Green: return C_GREEN;
+        case ModalTone::Amber: return C_AMBER;
+        case ModalTone::Red: return C_RED;
+        case ModalTone::Cyan:
+        default: return C_CYAN;
+    }
+}
+
+int drawWrappedText(int x, int y, int size, u32 color, const std::string& text,
+                    int maxWidth, int lineHeight, int maxLines = 4) {
+    if (text.empty()) return y;
+    std::string line;
+    std::string word;
+    int lines = 0;
+    auto flushWord = [&]() {
+        if (word.empty()) return;
+        const std::string candidate = line.empty() ? word : line + " " + word;
+        if (!line.empty() && textWidth(candidate, size) > maxWidth) {
+            drawText(x, y, size, color, line);
+            y += lineHeight;
+            ++lines;
+            line = word;
+        } else {
+            line = candidate;
+        }
+        word.clear();
+    };
+    for (size_t i = 0; i <= text.size(); ++i) {
+        const char c = i < text.size() ? text[i] : ' ';
+        if (c == ' ' || c == '\n' || i == text.size()) {
+            flushWord();
+            if (c == '\n' && !line.empty() && lines < maxLines) {
+                drawText(x, y, size, color, line);
+                y += lineHeight;
+                ++lines;
+                line.clear();
+            }
+            if (lines >= maxLines) break;
+        } else {
+            word.push_back(c);
+        }
+    }
+    if (!line.empty() && lines < maxLines) {
+        drawText(x, y, size, color, fitText(line, size, maxWidth));
+        y += lineHeight;
+    }
+    return y;
+}
+
+void drawModalFrame(const ModalView& m) {
+    beginFrame();
+    if (!g_pixels) return;
+
+    // Same visual language as the Wizard, but without the two right-side cards.
+    drawText(42, 24, 24, C_TEXT, "Horizon");
+    drawText(134, 24, 24, C_CYAN, "OC");
+    drawText(177, 24, 24, C_MUTED, "/");
+    drawText(198, 24, 24, C_TEXT, "Undervolting Wizard");
+    roundedRect(1085, 20, 150, 34, 17, C_PANEL_2);
+    drawTextRight(1218, 26, 15, C_MUTED, "v" + m.version);
+    fillRect(40, 70, 1200, 1, C_BORDER);
+
+    // Quiet/dimmed guide backdrop behind the modal.
+    roundedRect(40, 103, 1200, 557, 22, mix(C_BG, C_PANEL, 50));
+    fillRect(72, 126, 1136, 2, mix(C_BG, C_BORDER, 65));
+    for (int i = 0; i < 7; ++i) {
+        const int x = 72 + 1136 * i / 6;
+        fillCircle(x, 127, 5, mix(C_BG, C_BORDER, 70));
+    }
+
+    const int x = 145, y = 120, w = 990, h = 515;
+    const u32 accent = modalToneColor(m.tone);
+    roundedBorder(x, y, w, h, 22, mix(C_BORDER, accent, 52), C_PANEL, 2);
+    drawText(x + 38, y + 28, 15, accent, m.eyebrow.empty() ? "HOC UNDERVOLTING WIZARD" : m.eyebrow);
+    drawText(x + 38, y + 61, 34, C_TEXT, fitText(m.title, 34, w - 76));
+    fillRect(x + 38, y + 111, w - 76, 1, C_BORDER);
+
+    int yy = y + 136;
+    for (const std::string& paragraph : m.body) {
+        if (paragraph.empty()) { yy += 12; continue; }
+        const bool warning = paragraph.rfind("If normal CFW", 0) == 0 ||
+                             paragraph.rfind("Important:", 0) == 0;
+        yy = drawWrappedText(x + 38, yy, 19, warning ? accent : C_TEXT, paragraph,
+                             w - 76, 27, 3);
+        yy += 8;
+        if (yy > y + h - 135) break;
+    }
+
+    if (!m.primaryAction.empty()) {
+        const int by = y + h - 78;
+        if (!m.secondaryAction.empty()) {
+            drawActionButton(x + 38, by, 445, 48, "A : " + m.primaryAction);
+            drawActionButton(x + 507, by, 445, 48, "B : " + m.secondaryAction);
+        } else {
+            drawActionButton(x + 38, by, w - 76, 48, "A : " + m.primaryAction);
+        }
+    }
+
+    endFrame();
+}
+
 void drawStressFrame(const StressView& s) {
     beginFrame();
     if (!g_pixels) return;
@@ -490,6 +593,11 @@ void present() {
     drawInstructionCard();
     drawValuesCard();
     endFrame();
+}
+
+void presentModal(const ModalView& view) {
+    if (!g_initialized) return;
+    drawModalFrame(view);
 }
 
 void presentStress(const StressView& view) {

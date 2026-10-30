@@ -1,4 +1,5 @@
 #include "updater.hpp"
+#include "gui_console.hpp"
 
 #include <curl/curl.h>
 #include <switch.h>
@@ -569,6 +570,16 @@ bool installRelease(const ReleaseInfo& release, const std::string& selfPath, std
 }
 
 void drawChecking() {
+    if (gui::isInitialized()) {
+        gui::ModalView m{};
+        m.version = HOC_WIZARD_VERSION;
+        m.eyebrow = "UPDATE";
+        m.title = "Checking for updates";
+        m.body = {"Installed version: " HOC_WIZARD_VERSION, "Checking the latest Wizard release..."};
+        m.tone = gui::ModalTone::Cyan;
+        gui::presentModal(m);
+        return;
+    }
     consoleClear();
     std::printf("\x1b[1;1H\x1b[36mHOC Undervolting Wizard\x1b[0m\n");
     std::printf("------------------------------------------------------------\n\n");
@@ -578,6 +589,18 @@ void drawChecking() {
 }
 
 void drawUpdatePrompt(const ReleaseInfo& release) {
+    if (gui::isInitialized()) {
+        gui::ModalView m{};
+        m.version = HOC_WIZARD_VERSION;
+        m.eyebrow = "UPDATE AVAILABLE";
+        m.title = "A newer build is available";
+        m.body = {"Installed: " + std::string(HOC_WIZARD_VERSION), "Available: " + release.version, "The downloaded NRO is verified with SHA256 before the current file is replaced."};
+        m.primaryAction = "Download & install";
+        m.secondaryAction = "Not now";
+        m.tone = gui::ModalTone::Green;
+        gui::presentModal(m);
+        return;
+    }
     consoleClear();
     std::printf("\x1b[1;1H\x1b[36mHOC Undervolting Wizard - Update\x1b[0m\n");
     std::printf("------------------------------------------------------------\n\n");
@@ -590,6 +613,16 @@ void drawUpdatePrompt(const ReleaseInfo& release) {
 }
 
 void drawInstalling(const ReleaseInfo& release) {
+    if (gui::isInitialized()) {
+        gui::ModalView m{};
+        m.version = HOC_WIZARD_VERSION;
+        m.eyebrow = "INSTALLING UPDATE";
+        m.title = "Downloading " + release.version;
+        m.body = {"The existing NRO is kept until the new file has passed SHA256 verification.", "Do not close the application while the update is being installed."};
+        m.tone = gui::ModalTone::Cyan;
+        gui::presentModal(m);
+        return;
+    }
     consoleClear();
     std::printf("\x1b[1;1H\x1b[36mHOC Undervolting Wizard - Update\x1b[0m\n");
     std::printf("------------------------------------------------------------\n\n");
@@ -600,6 +633,18 @@ void drawInstalling(const ReleaseInfo& release) {
 }
 
 void drawCheckFailed(const std::string& error) {
+    if (gui::isInitialized()) {
+        gui::ModalView m{};
+        m.version = HOC_WIZARD_VERSION;
+        m.eyebrow = "UPDATE CHECK FAILED";
+        m.title = "Could not check for updates";
+        m.body = {error, "You can retry or continue with the currently installed version."};
+        m.primaryAction = "Retry";
+        m.secondaryAction = "Continue current version";
+        m.tone = gui::ModalTone::Red;
+        gui::presentModal(m);
+        return;
+    }
     consoleClear();
     std::printf("\x1b[1;1H\x1b[31mUpdate check failed\x1b[0m\n");
     std::printf("------------------------------------------------------------\n\n");
@@ -610,6 +655,18 @@ void drawCheckFailed(const std::string& error) {
 }
 
 void drawInstallFailed(const std::string& error) {
+    if (gui::isInitialized()) {
+        gui::ModalView m{};
+        m.version = HOC_WIZARD_VERSION;
+        m.eyebrow = "UPDATE FAILED";
+        m.title = "The update could not be installed";
+        m.body = {error, "The current NRO was preserved."};
+        m.primaryAction = "Retry";
+        m.secondaryAction = "Continue current version";
+        m.tone = gui::ModalTone::Red;
+        gui::presentModal(m);
+        return;
+    }
     consoleClear();
     std::printf("\x1b[1;1H\x1b[31mUpdate failed\x1b[0m\n");
     std::printf("------------------------------------------------------------\n\n");
@@ -621,6 +678,18 @@ void drawInstallFailed(const std::string& error) {
 }
 
 void drawInstalled(const ReleaseInfo& release) {
+    if (gui::isInitialized()) {
+        gui::ModalView m{};
+        m.version = HOC_WIZARD_VERSION;
+        m.eyebrow = "UPDATE INSTALLED";
+        m.title = release.version + " is ready";
+        m.body = {"The previous NRO was kept as .bak.", "The running copy is still the old version in memory.", "Exit now and launch HOC Undervolting Wizard again."};
+        m.primaryAction = "Exit";
+        m.secondaryAction = "Exit";
+        m.tone = gui::ModalTone::Green;
+        gui::presentModal(m);
+        return;
+    }
     consoleClear();
     std::printf("\x1b[1;1H\x1b[32mUpdate installed\x1b[0m\n");
     std::printf("------------------------------------------------------------\n\n");

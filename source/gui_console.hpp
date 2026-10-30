@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace gui {
 
@@ -23,6 +24,18 @@ struct View {
 
     bool haveActiveValues = false;
     ValueRow values[5];
+};
+
+enum class ModalTone { Cyan, Green, Amber, Red };
+
+struct ModalView {
+    std::string version;
+    std::string eyebrow;
+    std::string title;
+    std::vector<std::string> body;
+    std::string primaryAction;
+    std::string secondaryAction;
+    ModalTone tone = ModalTone::Cyan;
 };
 
 struct StressView {
@@ -50,6 +63,9 @@ bool isInitialized();
 void begin(const View& view);
 void printLeft(int logicalRow, const char* text);
 void present();
+
+// Full-width modal used for startup/update/disclaimer/reboot/error states.
+void presentModal(const ModalView& view);
 
 // Dedicated graphical progress page used while built-in stress tests are running.
 void presentStress(const StressView& view);

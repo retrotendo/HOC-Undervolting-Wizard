@@ -90,3 +90,5 @@ $(OUTPUT).elf : $(OFILES)
 	@nacptool --create "$(APP_TITLE)" "$(APP_AUTHOR)" "$(APP_VERSION)" $@
 -include $(DEPENDS)
 endif
+
+# beta44 real framebuffer GUI build trigger

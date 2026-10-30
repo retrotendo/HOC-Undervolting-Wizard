@@ -241,12 +241,12 @@ const char* stageName(Stage s) {
         case Stage::LowUvValidateQuick: return "CPU Low UV - Region Validation";
         case Stage::LowUvLong: return "CPU Low UV - Voltage Scan";
         case Stage::LowVminQuick: return "CPU Low VMIN - Boot Search";
-        case Stage::LowVminLong: return "CPU Low VMIN - Floor Sweep @ 510";
-        case Stage::LowVminSweep612: return "CPU Low VMIN - Floor Sweep @ 612";
-        case Stage::LowVminSweep714: return "CPU Low VMIN - Floor Sweep @ 714";
-        case Stage::LowVminValidate816: return "CPU Low VMIN - Floor Sweep @ 816";
-        case Stage::LowVminSweep918: return "CPU Low VMIN - Floor Sweep @ 918";
-        case Stage::LowVminValidate1020: return "CPU Low VMIN - Floor Sweep @ 1020";
+        case Stage::LowVminLong: return "CPU Low VMIN - Voltage Floor Scan";
+        case Stage::LowVminSweep612: return "CPU Low VMIN - Voltage Floor Scan";
+        case Stage::LowVminSweep714: return "CPU Low VMIN - Voltage Floor Scan";
+        case Stage::LowVminValidate816: return "CPU Low VMIN - Voltage Floor Scan";
+        case Stage::LowVminSweep918: return "CPU Low VMIN - Voltage Floor Scan";
+        case Stage::LowVminValidate1020: return "CPU Low VMIN - Voltage Floor Scan";
         case Stage::LowVminFinalLong: return "CPU Low VMIN - Dynamic 1 Hour Validation";
         case Stage::LowVminPlateauValidate: return "CPU Low VMIN - Region Validation";
         case Stage::VddqQuick: return "VDDQ - Quick Search";
@@ -396,6 +396,24 @@ bool checkAllOverrides(Stage s) {
 // VMIN floor probing is measurement-only. Read several HOC context samples so a
 // stale single poll cannot decide the floor crossover. The median CPU rail
 // voltage from matching override samples is used.
+void renderVoltageScanModal(u32 cpuHz, int index, int total, const std::string& phase) {
+    gui::ModalView m{};
+    m.version = HOC_WIZARD_VERSION;
+    m.eyebrow = "AUTOMATIC CPU VOLTAGE SCAN";
+    m.title = "Finding the CPU voltage floor";
+    std::string context = "CPU " + formatClock(cpuHz);
+    if (index >= 0 && total > 0)
+        context += "  |  Frequency " + std::to_string(index + 1) + " of " + std::to_string(total);
+    m.body = {
+        context,
+        "GPU 384 MHz  |  RAM 1331.2 MHz",
+        phase,
+        "The Wizard is measuring automatically. No input is required."
+    };
+    m.tone = gui::ModalTone::Cyan;
+    gui::presentModal(m);
+}
+
 bool sampleVminVoltage(Stage s, int sweepIndex = -1, int sweepTotal = 0) {
     if (!checkAllOverrides(s)) return false;
 
@@ -407,16 +425,8 @@ bool sampleVminVoltage(Stage s, int sweepIndex = -1, int sweepTotal = 0) {
 
     for (int attempt = 0; attempt < kAttempts; ++attempt) {
         for (int settle = 0; settle < kSettleReads; ++settle) {
-            consoleClear();
-            std::printf("\x1b[1;%dH\x1b[36mBattery Wizard\x1b[0m", UI_COL);
-            std::printf("\x1b[2;%dHStep : CPU Low VMIN - AUTO SCAN", UI_COL);
-            std::printf("\x1b[3;%dH----------------------------------------", UI_COL);
-            if (sweepIndex >= 0 && sweepTotal > 0)
-                std::printf("\x1b[5;%dHFrequency : %d / %d", UI_COL, sweepIndex + 1, sweepTotal);
-            std::printf("\x1b[7;%dHCPU       : %s", UI_COL, formatClock(g_overrideCheck.expected.cpuHz).c_str());
-            std::printf("\x1b[8;%dHGPU / RAM : 384 / 1331.2 MHz", UI_COL);
-            std::printf("\x1b[10;%dHSettling voltage %d / %d...", UI_COL, settle + 1, kSettleReads);
-            uiPresent();
+            renderVoltageScanModal(g_overrideCheck.expected.cpuHz, sweepIndex, sweepTotal,
+                "Settling measurement " + std::to_string(settle + 1) + " of " + std::to_string(kSettleReads));
             svcSleepThread(700'000'000);
             HocMonClocks ignored{};
             if (R_SUCCEEDED(hocmonGetClocks(&ignored))) latest = ignored;
@@ -425,17 +435,9 @@ bool sampleVminVoltage(Stage s, int sweepIndex = -1, int sweepTotal = 0) {
         std::vector<u32> samples;
         samples.reserve(kSamples);
         for (int i = 0; i < kSamples; ++i) {
-            consoleClear();
-            std::printf("\x1b[1;%dH\x1b[36mBattery Wizard\x1b[0m", UI_COL);
-            std::printf("\x1b[2;%dHStep : CPU Low VMIN - AUTO SCAN", UI_COL);
-            std::printf("\x1b[3;%dH----------------------------------------", UI_COL);
-            if (sweepIndex >= 0 && sweepTotal > 0)
-                std::printf("\x1b[5;%dHFrequency : %d / %d", UI_COL, sweepIndex + 1, sweepTotal);
-            std::printf("\x1b[7;%dHCPU       : %s", UI_COL, formatClock(g_overrideCheck.expected.cpuHz).c_str());
-            std::printf("\x1b[8;%dHGPU / RAM : 384 / 1331.2 MHz", UI_COL);
-            std::printf("\x1b[10;%dHReading CPU voltage sample %d / %d...", UI_COL, i + 1, kSamples);
-            if (attempt > 0) std::printf("\x1b[12;%dHRetrying noisy measurement...", UI_COL);
-            uiPresent();
+            std::string scanPhase = "Reading voltage sample " + std::to_string(i + 1) + " of " + std::to_string(kSamples);
+            if (attempt > 0) scanPhase += "  |  retrying noisy measurement";
+            renderVoltageScanModal(g_overrideCheck.expected.cpuHz, sweepIndex, sweepTotal, scanPhase);
             svcSleepThread(700'000'000);
 
             HocMonClocks cur{};
@@ -1275,14 +1277,15 @@ gui::View buildGuiView() {
     v.activeStep = guiProgressStep(g.stage);
     v.pulse = g_guiPulse;
     v.preparationLayout = (g.stage == Stage::Preparation && !g_autoPrepConfirm && !g_rebootConfirm);
+    v.hideValuesCard = (g.stage == Stage::HardwareDetection);
     if (v.preparationLayout && g_configPrompt && (g_configCheck.mask & Config_Prepare))
         v.stageTitle = "Preparation - Setting not ready";
 
     const u32 mask = guiInstructionMask();
     if (mask & Config_Prepare) {
-        v.instructionTitle = "Set values @ Horizon OC";
-        v.instructionLine1 = "Preparation";
-        v.instructionLine2 = "Use values shown left";
+        v.instructionTitle = "Set the Preparation values";
+        v.instructionLine1 = "Horizon OC + HOC Toolkit";
+        v.instructionLine2 = "Match the SET values below";
     } else if (mask != Config_None) {
         const bool ram = (mask & (Config_Vddq | Config_Vdd2)) != 0;
         v.instructionTitle = (mask & (mask - 1U)) ? "Set values @ Horizon OC" : "Set value @ Horizon OC";
@@ -1336,8 +1339,8 @@ gui::View buildGuiView() {
         v.instructionLine1 = "Final values saved";
         v.instructionLine2 = "B : Exit";
     } else if (g.stage == Stage::HardwareDetection) {
-        v.instructionTitle = "Hardware detection";
-        v.instructionLine1 = g.ramDetected ? "RAM detected" : "Detect RAM module";
+        v.instructionTitle = g.ramDetected ? "Continue to Preparation" : "Retry hardware detection";
+        v.instructionLine1 = g.ramDetected ? "Memory profile detected successfully" : "The memory profile could not be identified";
         v.instructionLine2 = g.ramDetected ? "A : Continue" : "A : Retry";
     } else {
         const std::string d = guiDurationForStage(g.stage);
@@ -1600,12 +1603,11 @@ void renderHardwareDetection() {
     title();
     if (g.ramDetected) {
         const RamProfile rp = ramProfileForId(g.dramId);
-        uiPrintf(6, "\x1b[32mRAM detected\x1b[0m");
-        uiPrintf(8, "Module     : %s", rp.name);
-        uiPrintf(9, "DRAM ID    : %d", g.dramId);
-        uiPrintf(11, "VDDQ start : %d mV", g.vddqStartMv);
-        uiPrintf(12, "OC range   : %s", rp.ocRange);
-        uiPrintf(13, "             Guide estimate - silicon varies");
+        uiPrintf(6, "The Wizard detected the memory profile used for RAM tuning.");
+        uiPrintf(9, "Memory Module : %s", rp.name);
+        uiPrintf(10, "VDDQ Start : %d mV", g.vddqStartMv);
+        uiPrintf(11, "Expected OC Range : %s", rp.ocRange);
+        uiPrintf(13, "The OC range is only a guide estimate; silicon quality varies.");
         uiPrintf(16, "A : Continue to Preparation");
         uiPrintf(17, "B : Exit");
         printResetHint(17);
@@ -1939,35 +1941,16 @@ void renderRebootConfirm() {
 
 void renderPreparation() {
     title();
-    uiPrintf(5, "Set these values:");
-    uiPrintf(7, "@ Horizon OC");
+    uiPrintf(5, "Before tuning starts, the Wizard needs a known baseline.");
+    uiPrintf(7, "You can set the recommended values manually, use your current settings as the baseline, or let the Wizard apply the recommended values automatically.");
 
-    uiPrintf(9, "General:");
-    uiPrintf(10, " - Uncapped Clocks : OFF");
-
-    uiPrintf(12, "RAM Settings:");
-    uiPrintf(13, " - HP Mode         : OFF");
-    uiPrintf(14, " - RAM Max         : 1600 MHz");
-    uiPrintf(15, " - VDD2            : 1175 mV");
-    uiPrintf(16, " - VDDQ            : %d mV", g.vddqStartMv);
-
-    uiPrintf(18, "CPU Settings:");
-    uiPrintf(19, " - CPU Max         : Lowest selectable (1963)");
-    uiPrintf(20, " - Low VMIN        : 620 mV");
-    uiPrintf(21, " - High VMIN       : 750 mV");
-    uiPrintf(22, " - UV Table        : 1683 MHz Tbreak");
-    uiPrintf(23, " - Low UV          : 0");
-    uiPrintf(24, " - High UV         : 0");
-
-    uiPrintf(26, "@ HOC Toolkit");
-    uiPrintf(27, " - CPU Boost : lowest / 1785 MHz");
-
-    uiPrintf(29, "A : Check settings");
-    uiPrintf(30, "X : Use my current settings as baseline");
-    uiPrintf(31, "Y : Set values automatically + reboot");
-    uiPrintf(32, "B : Exit");
-    printResetHint(32);
+    uiPrintf(18, "A : Check settings");
+    uiPrintf(19, "X : Use my current settings as baseline");
+    uiPrintf(20, "Y : Set recommended values automatically + reboot");
+    uiPrintf(21, "B : Exit");
+    printResetHint(21);
 }
+
 
 
 
@@ -2139,8 +2122,14 @@ void renderTestStage() {
         uiPrintf(row++, "A : Check setting");
         if (configMask & (Config_LowUv | Config_LowVmin))
             uiPrintf(row++, "Y : Set value automatically");
-        uiPrintf(row++, "+ : Known stable / Skip to next value");
-        uiPrintf(row++, "X : Known unstable / Use last good value");
+        const bool stepDownSearch = g.stage == Stage::LowVminQuick || g.stage == Stage::VddqQuick || g.stage == Stage::Vdd2Quick;
+        if (stepDownSearch) {
+            uiPrintf(row++, "+ : Known stable / Lower to next value");
+            uiPrintf(row++, "X : Known unstable / Raise to last good value");
+        } else {
+            uiPrintf(row++, "+ : Known stable / Continue to next value");
+            uiPrintf(row++, "X : Known unstable / Lower to last good value");
+        }
         uiPrintf(row++, "B : Exit");
         printResetHint(row - 1);
         return;
@@ -2766,14 +2755,8 @@ bool sampleCpuVoltageAt(u32 cpuHz, int index, int total, int& outMv) {
 
     for (int attempt = 0; attempt < kAttempts; ++attempt) {
         for (int settle = 0; settle < kSettleReads; ++settle) {
-            guiPageClear();
-            uiPrintf(1, "\x1b[36mBattery Wizard - CPU VOLTAGE SCAN\x1b[0m");
-            uiPrintf(3, "----------------------------------------");
-            uiPrintf(5, "Frequency : %d / %d", index + 1, total);
-            uiPrintf(7, "CPU       : %s", formatClock(cpuHz).c_str());
-            uiPrintf(8, "GPU / RAM : 384 / 1331.2 MHz");
-            uiPrintf(10, "Settling voltage %d / %d...", settle + 1, kSettleReads);
-            uiPresent();
+            renderVoltageScanModal(cpuHz, index, total,
+                "Settling measurement " + std::to_string(settle + 1) + " of " + std::to_string(kSettleReads));
             svcSleepThread(700'000'000);
             HocMonClocks ignored{};
             hocmonGetClocks(&ignored);
@@ -2782,15 +2765,9 @@ bool sampleCpuVoltageAt(u32 cpuHz, int index, int total, int& outMv) {
         std::vector<u32> samples;
         samples.reserve(kSamples);
         for (int sample = 0; sample < kSamples; ++sample) {
-            guiPageClear();
-            uiPrintf(1, "\x1b[36mBattery Wizard - CPU VOLTAGE SCAN\x1b[0m");
-            uiPrintf(3, "----------------------------------------");
-            uiPrintf(5, "Frequency : %d / %d", index + 1, total);
-            uiPrintf(7, "CPU       : %s", formatClock(cpuHz).c_str());
-            uiPrintf(8, "GPU / RAM : 384 / 1331.2 MHz");
-            uiPrintf(10, "Reading CPU voltage sample %d / %d...", sample + 1, kSamples);
-            if (attempt > 0) uiPrintf(12, "Retrying noisy measurement...");
-            uiPresent();
+            std::string scanPhase = "Reading voltage sample " + std::to_string(sample + 1) + " of " + std::to_string(kSamples);
+            if (attempt > 0) scanPhase += "  |  retrying noisy measurement";
+            renderVoltageScanModal(cpuHz, index, total, scanPhase);
             svcSleepThread(700'000'000);
 
             HocMonClocks cur{};

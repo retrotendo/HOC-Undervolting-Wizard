@@ -279,7 +279,7 @@ void drawProgress() {
 void drawInstructionCard() {
     const int x = 835, y = 158, w = 405, h = 205;
     drawCard(x, y, w, h, true);
-    drawLabel(x + 24, y + 20, "CURRENT INSTRUCTION");
+    drawLabel(x + 24, y + 20, "YOUR TASK");
     drawText(x + 24, y + 52, 23, C_TEXT,
              fitText(g_view.instructionTitle.empty() ? "Continue Wizard" : g_view.instructionTitle, 23, w - 48));
     drawText(x + 24, y + 91, 16, C_MUTED, fitText(g_view.instructionLine1, 16, w - 48));
@@ -291,16 +291,17 @@ void drawInstructionCard() {
 void drawPreparationCard() {
     const int x = 715, y = 158, w = 525, h = 522;
     drawCard(x, y, w, h, true);
-    drawLabel(x + 24, y + 20, "CURRENT INSTRUCTION");
-    drawText(x + 24, y + 48, 27, C_TEXT, "Preparation");
+    drawLabel(x + 24, y + 20, "YOUR TASK");
+    drawText(x + 24, y + 48, 25, C_TEXT, "Set the Preparation values");
+    drawText(x + 24, y + 80, 14, C_MUTED, "Open Horizon OC / HOC Toolkit and match SET.");
 
     const int setRight = x + 393;
     const int activeRight = x + w - 24;
-    drawTextRight(setRight, y + 80, 13, C_MUTED, "SET");
-    drawTextRight(activeRight, y + 80, 13, C_MUTED, "ACTIVE");
-    fillRect(x + 24, y + 105, w - 48, 1, C_BORDER);
+    drawTextRight(setRight, y + 107, 13, C_MUTED, "SET");
+    drawTextRight(activeRight, y + 107, 13, C_MUTED, "ACTIVE");
+    fillRect(x + 24, y + 130, w - 48, 1, C_BORDER);
 
-    int yy = y + 119;
+    int yy = y + 143;
     std::string currentGroup;
     for (const PreparationRow& r : g_view.preparationRows) {
         if (r.group != currentGroup) {
@@ -344,6 +345,9 @@ void drawValuesCard() {
     }
 }
 
+int drawWrappedText(int x, int y, int size, u32 color, const std::string& text,
+                    int maxWidth, int lineHeight, int maxLines);
+
 void drawMainCard() {
     const int x = 40, y = 158, w = g_view.preparationLayout ? 650 : 765, h = 522;
     drawCard(x, y, w, h, false);
@@ -363,30 +367,55 @@ void drawMainCard() {
     }
 
     if (g_view.preparationLayout) {
-        drawText(x + 28, y + 120, 18, C_TEXT,
-                 g_view.stageTitle.find("not ready") != std::string::npos
-                    ? "Some Preparation values do not match yet."
-                    : "Set the Preparation values shown on the right.");
-        drawText(x + 28, y + 151, 16, C_MUTED, "SET = required value");
-        drawText(x + 28, y + 178, 16, C_MUTED, "ACTIVE = value currently reported by Horizon OC");
-        drawText(x + 28, y + 205, 16, C_RED, "Red ACTIVE values still need attention.");
+        int by = y + 120;
+        if (g_view.stageTitle.find("not ready") != std::string::npos) {
+            by = drawWrappedText(x + 28, by, 18, C_TEXT,
+                "Some required Preparation values still do not match.", w - 56, 27, 2);
+            by += 12;
+            drawWrappedText(x + 28, by, 17, C_MUTED,
+                "Correct the red ACTIVE values shown on the right, then check again.", w - 56, 25, 3);
+        } else {
+            by = drawWrappedText(x + 28, by, 18, C_TEXT,
+                "Before tuning starts, the Wizard needs a known baseline.", w - 56, 27, 3);
+            by += 12;
+            drawWrappedText(x + 28, by, 17, C_MUTED,
+                "You can set the recommended values manually, use your current settings as the baseline, or let the Wizard apply the recommended values automatically.",
+                w - 56, 25, 5);
+        }
     } else {
-        const int bodyMax = actions.empty() ? 15 : (actions.size() >= 5 ? 7 : 10);
-        const int bodySize = body.size() > size_t(bodyMax) ? 16 : 18;
-        const int bodyStep = bodySize + 7;
+        const int bodyMax = actions.empty() ? 15 : (actions.size() >= 5 ? 8 : 11);
         int by = y + 116;
         int shown = 0;
         for (const std::string& raw : body) {
-            if (shown >= bodyMax) break;
+            if (shown >= bodyMax || by > y + h - 190) break;
             const bool heading = raw == "Objective:" || raw == "Test:" || raw == "Keys:" ||
                                  raw == "Required test clocks:" || raw == "Current Temporary Overrides:" ||
                                  raw == "Final values:" || raw == "Temporary Overrides:";
-            drawText(x + 28, by, heading ? 15 : bodySize, heading ? C_CYAN : C_TEXT,
-                     fitText(raw, heading ? 15 : bodySize, w - 56));
-            by += heading ? 24 : bodyStep;
+            if (heading) {
+                drawText(x + 28, by, 15, C_CYAN, raw);
+                by += 26;
+                ++shown;
+                continue;
+            }
+
+            const size_t colon = raw.find(':');
+            const bool valueRow = colon != std::string::npos && colon > 0 && colon < raw.size() - 1 &&
+                                  raw.find("http") != 0;
+            if (valueRow) {
+                const std::string label = trim(raw.substr(0, colon));
+                const std::string value = trim(raw.substr(colon + 1));
+                if (shown) fillRect(x + 28, by - 7, w - 56, 1, mix(C_PANEL, C_BORDER, 65));
+                drawText(x + 28, by, 16, C_MUTED, fitText(label, 16, (w - 70) / 2));
+                drawTextRight(x + w - 28, by, 17, C_TEXT, fitText(value, 17, (w - 70) / 2));
+                by += 31;
+            } else {
+                by = drawWrappedText(x + 28, by, 17, C_TEXT, raw, w - 56, 25, 3);
+                by += 5;
+            }
             ++shown;
         }
-        if (shown < int(body.size())) drawText(x + 28, by, 15, C_MUTED, "More details continue in this step...");
+        if (shown < int(body.size()) && by < y + h - 175)
+            drawText(x + 28, by, 15, C_MUTED, "More details continue in this step...");
     }
 
     if (!actions.empty()) {
@@ -645,7 +674,7 @@ void present() {
         drawPreparationCard();
     } else {
         drawInstructionCard();
-        drawValuesCard();
+        if (!g_view.hideValuesCard) drawValuesCard();
     }
     endFrame();
 }

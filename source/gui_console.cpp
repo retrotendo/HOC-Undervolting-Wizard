@@ -388,7 +388,41 @@ void drawMainCard() {
     }
     body.swap(compactBody);
 
-    if (g_view.preparationLayout) {
+    const bool completeSummary = g_view.fullWidthLayout && g_view.stageTitle == "Complete";
+    if (completeSummary) {
+        auto drawCentered = [&](int yy, int size, u32 color, const std::string& text) {
+            drawText(x + (w - textWidth(text, size)) / 2, yy, size, color, text);
+        };
+
+        drawCentered(y + 124, 20, C_GREEN, "UNDERVOLTING COMPLETE");
+        drawCentered(y + 164, 16, C_CYAN, "Final values");
+
+        const int tableW = 470;
+        const int tableX = x + (w - tableW) / 2;
+        int sy = y + 205;
+        int rows = 0;
+        std::string savedLine;
+        for (const std::string& raw : body) {
+            if (raw == "UNDERVOLTING COMPLETE" || raw == "Final values:") continue;
+            if (startsWith(raw, "Saved to ")) {
+                savedLine = raw;
+                continue;
+            }
+            const size_t colon = raw.find(':');
+            if (colon == std::string::npos || colon == 0 || colon >= raw.size() - 1) continue;
+            const std::string label = trim(raw.substr(0, colon));
+            const std::string value = trim(raw.substr(colon + 1));
+            if (rows) fillRect(tableX, sy - 8, tableW, 1, mix(C_PANEL, C_BORDER, 65));
+            drawText(tableX + 8, sy, 17, C_MUTED, label);
+            drawTextRight(tableX + tableW - 8, sy, 18, C_TEXT, value);
+            sy += 39;
+            ++rows;
+        }
+        if (!savedLine.empty()) {
+            sy += 12;
+            drawCentered(sy, 17, C_CYAN, savedLine);
+        }
+    } else if (g_view.preparationLayout) {
         int by = y + 120;
         if (g_view.stageTitle.find("not ready") != std::string::npos) {
             by = drawWrappedText(x + 28, by, 18, C_TEXT,

@@ -349,7 +349,7 @@ int drawWrappedText(int x, int y, int size, u32 color, const std::string& text,
                     int maxWidth, int lineHeight, int maxLines);
 
 void drawMainCard() {
-    const int x = 40, y = 158, w = g_view.preparationLayout ? 650 : 765, h = 522;
+    const int x = 40, y = 158, w = g_view.fullWidthLayout ? 1200 : (g_view.preparationLayout ? 650 : 765), h = 522;
     drawCard(x, y, w, h, false);
     drawLabel(x + 26, y + 20, "GUIDED TUNING");
     drawText(x + 26, y + 49, 29, C_TEXT, fitText(g_view.stageTitle, 29, w - 52));
@@ -365,6 +365,28 @@ void drawMainCard() {
         if (isAction(s)) actions.push_back(s);
         else body.push_back(s);
     }
+
+    // Old console pages sometimes split one sentence across several uiPrintf rows.
+    // Rejoin only obvious prose fragments, then let the graphical renderer wrap
+    // them to the actual card width. This removes unnecessary legacy line breaks
+    // without merging headings, values or numbered rows.
+    std::vector<std::string> compactBody;
+    auto isPlainFragment = [](const std::string& text) {
+        if (text.empty() || !std::isalpha(static_cast<unsigned char>(text[0]))) return false;
+        if (text.find(':') != std::string::npos || startsWith(text, "http")) return false;
+        return true;
+    };
+    for (const std::string& raw : body) {
+        if (!compactBody.empty() && isPlainFragment(compactBody.back()) && isPlainFragment(raw)) {
+            const char last = compactBody.back().empty() ? '\0' : compactBody.back().back();
+            if (last != '.' && last != '!' && last != '?' && last != ':' && last != ';') {
+                compactBody.back() += " " + raw;
+                continue;
+            }
+        }
+        compactBody.push_back(raw);
+    }
+    body.swap(compactBody);
 
     if (g_view.preparationLayout) {
         int by = y + 120;
@@ -679,11 +701,13 @@ void present() {
     drawHeader();
     drawProgress();
     drawMainCard();
-    if (g_view.preparationLayout) {
-        drawPreparationCard();
-    } else {
-        drawInstructionCard();
-        if (!g_view.hideValuesCard) drawValuesCard();
+    if (!g_view.fullWidthLayout) {
+        if (g_view.preparationLayout) {
+            drawPreparationCard();
+        } else {
+            drawInstructionCard();
+            if (!g_view.hideValuesCard) drawValuesCard();
+        }
     }
     endFrame();
 }

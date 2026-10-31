@@ -264,7 +264,7 @@ const char* stageName(Stage s) {
         case Stage::BoostMatrixValidate: return "Final Boost - CPU";
         case Stage::BoostMemValidate: return "Final Boost - RAM";
         case Stage::BoostCpuMemValidate: return "High UV + RAM Combined";
-        case Stage::RealWorldValidate: return "Final Real-World Test";
+        case Stage::RealWorldValidate: return "Real-World Stability Check";
         case Stage::Complete: return "Complete";
     }
     return "Unknown";
@@ -1278,6 +1278,7 @@ gui::View buildGuiView() {
     v.pulse = g_guiPulse;
     v.preparationLayout = (g.stage == Stage::Preparation && !g_autoPrepConfirm && !g_rebootConfirm);
     v.hideValuesCard = (g.stage == Stage::HardwareDetection);
+    v.fullWidthLayout = g_resultScreen || g.stage == Stage::RealWorldValidate || g.stage == Stage::Complete;
     if (v.preparationLayout && g_configPrompt && (g_configCheck.mask & Config_Prepare))
         v.stageTitle = "Preparation - Setting not ready";
 
@@ -1343,9 +1344,9 @@ gui::View buildGuiView() {
             (g.vminValidateCount == 1 ? " voltage region to test" : " voltage regions to test");
         v.instructionLine2 = "A : Start test";
     } else if (g.stage == Stage::RealWorldValidate) {
-        v.instructionTitle = "Run the real-world test";
-        v.instructionLine1 = "Remove all overrides";
-        v.instructionLine2 = "Then run game test";
+        v.instructionTitle = "Final stability recommendation";
+        v.instructionLine1 = "Optional real-world confirmation";
+        v.instructionLine2 = "A : Continue to results";
     } else if (g.stage == Stage::Complete) {
         v.instructionTitle = "Undervolting complete";
         v.instructionLine1 = "Final values saved";
@@ -2170,19 +2171,18 @@ void renderTestStage() {
 
 void renderRealWorld() {
     title();
-    uiPrintf(5, "@ Horizon OC");
-    uiPrintf(7, "Temporary Overrides:");
-    uiPrintf(8, " - Remove all Overrides");
-    uiPrintf(10, "Test:");
-    uiPrintf(11, "1 hour Tears of the Kingdom");
-    uiPrintf(12, "Fast travel / battles / loading");
-    uiPrintf(13, "Home + Sleep/Wake");
-    uiPrintf(15, "Keys:");
-    uiPrintf(16, "A : PASS");
-    uiPrintf(17, "+ : Known PASS / Skip real-world test");
-    uiPrintf(18, "X : FAIL");
-    uiPrintf(19, "B : Exit");
-    printResetHint(19);
+    uiPrintf(5, "For final confirmation, play The Legend of Zelda: Tears of the Kingdom for at least 1 hour.");
+    uiPrintf(7, "Use normal gameplay, fast travel, battles, loading screens and Sleep/Wake.");
+    uiPrintf(9, "If a crash, freeze or reboot occurs, change only ONE setting by one step, then play again.");
+    uiPrintf(11, "Recommended order:");
+    uiPrintf(12, "Low VMIN -> VDDQ -> VDD2 -> CPU High UV -> CPU Low UV");
+    uiPrintf(14, "Low VMIN / VDDQ / VDD2: raise the voltage by one step.");
+    uiPrintf(15, "CPU High UV / CPU Low UV: move one step toward a less aggressive undervolt.");
+    uiPrintf(17, "If it still fails, restore that setting to its previous value before trying the next one.");
+    uiPrintf(18, "Never change more than one setting at a time.");
+    uiPrintf(20, "A : Continue to results");
+    uiPrintf(21, "B : Exit");
+    printResetHint(21);
 }
 
 void renderComplete() {

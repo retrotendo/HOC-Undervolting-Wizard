@@ -38,3 +38,5 @@ jobs:
           files: |
             HOC-Undervolting-Wizard.nro
             HOC-Undervolting-Wizard.nro.sha256
+
+# beta50 release trigger

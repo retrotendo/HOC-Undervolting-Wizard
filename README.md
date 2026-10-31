@@ -1,531 +1,571 @@
 # HOC Undervolting Wizard
 
-A step-by-step Nintendo Switch homebrew assistant for finding and validating efficient **Horizon OC undervolting settings** on **Mariko / Switch V2 / Lite / OLED**.
+A guided Nintendo Switch homebrew assistant for finding and validating efficient **Horizon OC undervolting settings** on **Mariko hardware** (Switch V2, Lite and OLED).
 
-The Wizard was created as a companion to **Performance Modes**:
+The Wizard was built around the Battery-profile workflow used by **Performance Modes**:
 
 https://github.com/retrotendo/Ultrahand-Performance-Modes
 
-Use it to find stable Battery-profile CPU/RAM values, validate them with built-in stress tests, then save the proven values into Performance Modes.
+It guides the user through CPU Low UV, CPU Low VMIN, RAM VDDQ, RAM VDD2 and CPU High UV tuning, performs automatic clock setup for built-in tests, checks that the active Horizon OC configuration still matches the Wizard state, and records the final validated values.
 
-The Wizard can also be used independently for Horizon OC tuning.
-
----
-
-# v0.4 integrated test engine
-
-Built-in tests use established open-source workloads:
-
-- **CPU — Stress-NX Matrixprod + Hanoi Verify**
-  - Matrixprod workload from the GPLv2 Horizon-OC / Benchmark Toolbox implementation.
-  - Hanoi verification detects calculation errors automatically.
-  - Benchmark Toolbox credits Stress-NX to **Lineon**.
-
-- **RAM — memtester v4**
-  - Stuck Address, Random Value, XOR/SUB/MUL/DIV, Sequential Increment, Solid Bits, Checkerboard, Bit Spread, Bit Flip, Walking Ones/Zeroes and related tests.
-  - memtester credits **Simon Kirby** and **Charles Cazabon**.
-  - Switch runner adapted from Horizon-OC / Benchmark Toolbox under GPLv2.
-
-- **Combined — CPU + RAM**
-  - Matrixprod/Hanoi and RAM stress run together to expose failures that only appear under combined load.
-
-- **GPU — deko3d Compute / Memory Stress**
-  - Project-original deko3d compute/memory test.
-  - GPU output is verified on the CPU and mismatches fail the test.
-
-Quick boundary tests normally run for **1 minute**. Long validation tests run for **1 hour**. The Low VMIN voltage scan is measurement-only; after the scan, the Wizard runs a long CPU test only at the highest frequency of each distinct measured voltage region.
-
-Before **every built-in test and every VMIN floor probe**, the Wizard reads Horizon OC's live `hoc:clk` context and verifies all three Temporary Overrides:
-
-- CPU
-- GPU
-- RAM
-
-A missing or wrong override blocks the test. No result is recorded until all three match the requested target.
+> This README reflects the current **v0.4.0-beta.52** workflow. Older beta-by-beta notes are available in GitHub Releases.
 
 ---
 
-# Full Memory Mode required
+## What the Wizard does
 
-The Wizard must be launched from hbmenu in **Full Memory / Application Mode**.
+- Detects the installed Mariko RAM profile and chooses the appropriate VDDQ starting point.
+- Guides the user through a known Preparation baseline.
+- Can use the recommended baseline, import the user's current compatible settings as the baseline, or automatically apply the recommended Preparation values.
+- Finds the highest usable **CPU Low UV** level.
+- Finds the lowest usable **CPU Low VMIN**, down to the Wizard safety floor of **570 mV**.
+- Automatically scans CPU voltage at **510 / 612 / 714 / 816 / 918 / 1020 MHz**.
+- Finds and validates efficient **RAM VDDQ** and **RAM VDD2** values.
+- Finds the highest usable **CPU High UV** level.
+- Runs built-in CPU, RAM and combined validation workloads.
+- Automatically sets and restores the Temporary Overrides required by built-in tests.
+- Detects crashes/reboots that interrupt a running validation.
+- Continuously checks all five tuned values against the state the Wizard expects.
+- Provides a final real-world stability recommendation using **The Legend of Zelda: Tears of the Kingdom**.
+- Writes the final results to `results.txt` for later use with the Battery profile.
 
-If it is started in **Applet Mode** (for example through Album), the Wizard stops immediately on a dedicated warning screen. The guide and tuning state are not opened and no built-in test can be started.
-
-To launch correctly, hold **R** while starting an installed game and keep holding **R** until hbmenu opens, then start HOC Undervolting Wizard.
-
-This check uses the same `appletGetAppletType()` distinction as nx-hbmenu: only `Application` and `SystemApplication` modes are accepted.
-
----
-
-# New in v0.4.0-beta.16
-
-## Hardware-aware VDDQ start
-
-- Before Preparation, the Wizard reads Horizon OC's `dramID` and identifies the installed Mariko RAM module.
-- The VDDQ baseline is selected automatically from the Horizon OC RAM guidance: **640 mV** for NEE/x267, AA-MGCL, AM-MGCJ, AB-MGCL and NME; **600 mV** for WT:B, WT:F and WT:E.
-- The detected RAM module, DRAM ID and chosen VDDQ start are shown before Preparation.
-- Unknown/unsupported DRAM IDs are not guessed; detection must succeed before the guided setup continues.
-
-## Verified setting -> guided reboot
-
-Persistent HOC changes now use a dedicated handoff instead of mixing setting instructions and stress tests on one page:
-
-1. The Wizard shows only the **new value that must be changed now**.
-2. Press **A** and the Wizard reads Horizon OC's current persistent configuration.
-3. A wrong value is shown as **Required / Current / WRONG** and reboot is blocked.
-4. A correct value gets a green confirmation such as **Low VMIN 615 mV is set**.
-5. Press **A** again to request the console restart.
-6. After reopening the Wizard, it first asks whether the console booted normally with the new value.
-7. Only after **YES** does the 1-minute/1-hour test page appear.
-
-Values that were already confirmed are no longer repeated as set points on later pages. Temporary Overrides are still shown whenever they must be changed for a test.
-
-## Automatic CPU Low VMIN voltage scan
-
-After the Low VMIN candidate has booted successfully, the Wizard offers one **A = START SCAN** action. From that point the voltage scan runs without further user input.
-
-- The currently active CPU/GPU/RAM Temporary Overrides are saved first.
-- GPU is set automatically to **384 MHz** and RAM to **1331.2 MHz**.
-- CPU is switched automatically through **510 -> 612 -> 714 -> 816 -> 918 -> 1020 MHz**.
-- HOC is given time to settle after every frequency change.
-- At every CPU point the Wizard takes **3 valid CPU-rail samples** and uses the median.
-- Readings are grouped into distinct 5 mV CPU-voltage regions.
-- The Temporary Overrides that were active before the scan are restored afterward.
-- For each detected voltage region, only the **highest frequency in that region** gets the later 1-hour CPU stability test.
-
-Example: if 510-816 MHz measure ~570 mV, 918 MHz measures ~585 mV and 1020 MHz measures ~600 mV, the Wizard validates **816 @ 570**, **918 @ 585** and **1020 @ 600**.
-
-The detected voltage regions are also written to `results.txt`. The Wizard still does not change persistent Low VMIN/UV/RAM voltage settings automatically; this scan writes only Temporary Overrides.
+The Wizard is intentionally conservative: it changes one tuning domain at a time and keeps a last-known-good value for recovery.
 
 ---
 
-# New in v0.4.0-beta.15
+## Requirements
 
-- Redesign the TEST BLOCKED override screen for readability.
-- Show each CPU/GPU/RAM override vertically with **Required**, live **Current**, and color-coded **OK / WRONG** status.
-- `Current` uses the actual Horizon OC override value; unset overrides show `NOT SET`.
-- VMIN floor checks additionally show the applied CPU clock as its own Required/Current/Status block.
-- No override detection, tuning, reboot, stress-test, VMIN or updater logic changes.
+- Nintendo Switch **Mariko** hardware: V2, Lite or OLED
+- Atmosphere CFW
+- Horizon OC installed and working
+- Homebrew Menu in **Full Memory / Application Mode**
+- Hekate strongly recommended for boot-failure recovery
 
----
+The Wizard is not intended for Erista/V1 consoles.
 
-# New in v0.4.0-beta.14
+### Full Memory Mode is required
 
-- Correct the Horizon OC menu hierarchy: there is no separate **CPU UV** menu.
-- CPU Max, Low/High VMIN, UV Table, Low UV and High UV are all shown under **CPU Settings**.
-- Preparation and tuning/recovery screens now use the same real Horizon OC menu path.
-- No tuning, reboot, stress-test, VMIN, override or updater logic changes.
+Applet Mode is blocked at startup because the integrated stress tests need Full Memory mode.
 
----
+Launch hbmenu through title takeover:
 
-# New in v0.4.0-beta.13
-
-- Keep the beta.12 right-side layout, but make the application hierarchy explicit.
-- Horizon OC values are shown under one **@ Horizon OC** heading, with the actual submenu below it (General, RAM Settings, CPU Settings, CPU UV, Temporary Overrides).
-- HOC Toolkit values are separated under **@ HOC Toolkit**.
-- Child settings use a compact `- setting : value` table style for quick reading while Ultrahand is open.
-- Tuning, reboot, test, VMIN and updater logic are unchanged.
+1. Hold **R** while starting an installed game.
+2. Keep holding **R** until hbmenu opens.
+3. Start **HOC Undervolting Wizard**.
 
 ---
 
-# New in v0.4.0-beta.12
+## Installation
 
-- Remove all manual **Save KIP / Save Toolkit** instructions from the active Wizard guide.
-- Persistent setting changes now simply tell the user when a **CFW reboot** is required.
-- Group every HOC set point under its actual menu area: **General**, **RAM Settings**, **CPU Settings**, **CPU UV**, **HOC Toolkit**, and **Temporary Overrides**.
-- Keep the beta.11 tuning/test logic unchanged.
-- Expand the GitHub Releases API fallback from 5 to 100 entries; the lightweight `UPDATE.txt` manifest remains the primary update source.
+1. Download `HOC-Undervolting-Wizard.nro` from the latest GitHub release.
+2. Create:
 
----
+   ```text
+   /switch/HOC-Undervolting-Wizard/
+   ```
 
-# New in v0.4.0-beta.11
+3. Copy the NRO to:
 
-- More robust startup updater with two independent metadata sources.
-- A simple public `UPDATE.txt` manifest avoids depending only on the unauthenticated GitHub Releases API.
-- Update-check failures are shown on screen and can be retried instead of being silently ignored.
-- beta.10 tuning and right-side UI behavior are unchanged.
+   ```text
+   /switch/HOC-Undervolting-Wizard/HOC-Undervolting-Wizard.nro
+   ```
 
----
+4. Boot Atmosphere and launch the Wizard through hbmenu in Full Application Mode.
 
-# New in v0.4.0-beta.10
+An old state file from:
 
-- Correct the Ultrahand-friendly panel position based on real Switch OLED testing.
-- The right-side panel now starts at console column 36 instead of 82.
-- Shorter fixed-width lines avoid wrapping at the screen edge.
-- beta.9/beta.8 tuning behavior remains unchanged.
+```text
+/switch/HOC-Battery-Wizard/state.ini
+```
 
----
-
-# New in v0.4.0-beta.9
-
-## Ultrahand-friendly right-side layout
-
-- Reworked Wizard stage screens into a compact table-style layout.
-- All values that must be entered in Horizon OC and all Temporary Override targets are displayed on the right side of the screen so they remain readable while Ultrahand/Horizon OC is open on the left.
-- The tuning workflow, reboot points, test logic, dynamic Low VMIN detection, recovery behavior and KNOWN PASS/FAIL shortcuts are unchanged from beta.8.
-- `Reboot CFW` is shown only on stages where the persistent HOC value has actually changed.
-- Dynamic Low VMIN voltage probing remains internal; the UI simply tells the user which Overrides to set and when to continue.
+is imported automatically when no current state exists.
 
 ---
 
-# New in v0.4.0-beta.8
+## In-app updater
 
-## Startup self-updater
+The Wizard can check this repository for a newer release at startup.
 
-Starting with **beta.8**, the Wizard checks its own GitHub releases when it starts in Full Application Mode.
+If an update is available:
 
-- If the installed build is current, startup continues normally.
-- If a newer build exists, the Wizard asks before doing anything: **A = Download & install**, **B = Not now**.
-- The new NRO is downloaded to a temporary `.new` file first.
-- The matching release `.sha256` file is downloaded and the NRO is verified with libnx SHA256 before replacement.
-- Only after verification does the Wizard rename the current NRO to `.bak` and move the verified `.new` file into place.
-- If replacement fails, the old NRO is restored.
-- After a successful update the Wizard exits; launch it again from hbmenu to run the new build.
-- The previous NRO remains beside the app as `.bak` for recovery and is replaced by the next updater run.
+- the current and available versions are shown,
+- installation requires explicit confirmation,
+- the new NRO is downloaded to a temporary file,
+- the release SHA256 is downloaded and verified,
+- the current NRO is preserved as a `.bak` recovery copy,
+- the verified NRO replaces the installed build only after validation succeeds.
 
-The updater is intentionally **not automatic**: it never installs a release without the user's A-button confirmation. Network/update-check failures are non-fatal and simply continue with the installed build.
-
-The GitHub repository must be public for anonymous in-app update checks; no GitHub token is embedded in the NRO.
-
-**beta.8 itself must be installed manually once. Future builds can then update beta.8 in-app.**
+Update-check or network failures do not prevent the installed Wizard from starting.
 
 ---
 
-# New in v0.4.0-beta.7
+# Guided workflow
 
-- Preparation now shows only the exact Battery-guide starting values.
-- Removed all "or known-stable/known-working value" alternatives from the setup screen and setup documentation.
-- Previously validated personal values are handled only through **KNOWN PASS / SKIP** during the relevant tuning stages.
-- Clarified that Full Application Mode is required, matching the beta.6 startup blocker.
+The graphical guide uses one consistent layout:
 
----
+- **Left:** what the current step is doing, why it is being done, and the available choices.
+- **Right:** the concrete action the user has to perform now.
+- **ACTUAL ACTIVE VALUES:** the five tuned values currently reported by Horizon OC.
 
-# New in v0.4.0-beta.6
+If an active value does not match the current Wizard state it is highlighted **red**.
 
-- hard startup block when Applet Mode is detected
-- clear on-screen Full Memory Mode launch instructions
-- no Wizard state/guide/test access until launched as an Application
-- beta.5 dynamic VMIN probe and known-result shortcuts retained
+Decision questions such as post-reboot boot status are shown as dedicated modal dialogs instead of being mixed into normal instruction pages.
 
 ---
 
-# New in v0.4.0-beta.5
+## 1. Hardware Detection
+
+Before tuning starts, the Wizard reads Horizon OC hardware information and identifies the installed Mariko RAM profile.
+
+The page shows only the useful tuning information:
+
+- detected memory module,
+- VDDQ starting voltage,
+- expected RAM OC range as a guide estimate.
+
+Unknown or unsupported RAM information is not silently guessed.
+
+---
+
+## 2. Preparation
+
+Before tuning starts, the Wizard needs a known baseline.
+
+You can:
+
+- **Check settings** and set the recommended values manually,
+- **Use my current settings as baseline**, or
+- **Set values automatically + reboot**.
+
+### Recommended Preparation values
+
+#### Horizon OC — General
+
+- Uncapped Clocks: **OFF**
+
+#### Horizon OC — RAM Settings
+
+- HP Mode: **OFF**
+- RAM Max: **1600 MHz**
+- VDD2: **1175 mV**
+- VDDQ: selected automatically from the detected RAM profile
+
+#### Horizon OC — CPU Settings
+
+- CPU Max: **1963 MHz**
+- Low VMIN: **620 mV**
+- High VMIN: **750 mV**
+- UV Table: **1683 MHz Tbreak**
+- Low UV: **0**
+- High UV: **0**
+
+#### HOC Toolkit
+
+- CPU Boost: **1785 MHz**
+
+The Preparation page shows **SET** and **ACTIVE** side by side. Mismatching ACTIVE values are highlighted red.
+
+### Use my current settings as baseline
+
+A compatible existing configuration can be imported instead of resetting the tuned values to the recommended defaults.
+
+The Wizard then continues from those imported values and searches from there.
+
+### Automatic setting support
+
+With the currently supported Horizon OC interface, the Wizard can automatically apply:
+
+- the complete recommended Preparation baseline,
+- CPU Low UV candidates,
+- CPU Low VMIN candidates.
+
+The current automatic persistent-setting path is designed for **Horizon OC 2.5.1**. RAM VDDQ, RAM VDD2 and CPU High UV are still changed manually in Horizon OC when the Wizard asks for them.
+
+---
+
+## 3. CPU Low UV
+
+The Wizard searches upward through Low UV levels to find the highest value that can boot normally.
+
+- Search direction: **higher Low UV index = more aggressive undervolt**
+- Step size: **+1 level**
+- Wizard maximum: **8**
+
+For each new persistent candidate:
+
+1. Set or automatically apply the requested value.
+2. Reboot normal CFW.
+3. Reopen the Wizard.
+4. Confirm whether the console booted normally.
+
+If a candidate is known unstable, the Wizard returns to the previous last-good value.
+
+After the boot limit is found, the Wizard performs an automatic CPU voltage scan and validates the detected voltage regions.
+
+---
+
+## 4. CPU Low VMIN
+
+Low VMIN is searched downward from the current baseline.
+
+- Search direction: **lower voltage = more aggressive undervolt**
+- Step size: **10 mV**
+- Wizard minimum: **570 mV**
+
+The Wizard deliberately stops at 570 mV. Going lower is outside this guided workflow because very low VMIN values can introduce Sleep / Standby / Wake issues even when short stress tests appear stable.
+
+After the boot boundary is found, the automatic voltage scan runs.
+
+### Automatic CPU voltage scan
+
+The Wizard temporarily uses:
+
+- GPU: **384 MHz**
+- RAM: **1331.2 MHz**
+- CPU: **510 → 612 → 714 → 816 → 918 → 1020 MHz**
+
+At every CPU frequency it:
+
+1. discards **2 settling measurements**,
+2. records **9 valid voltage samples**,
+3. uses the median,
+4. retries once if the sample set is unusually noisy,
+5. groups readings into HOC's 5 mV voltage regions.
+
+The user's previous Temporary Overrides are restored afterward.
+
+Only the **highest frequency in each distinct voltage region** is selected for stability validation. Each selected region is currently tested for **1 minute**.
+
+This avoids repeatedly stress-testing several lower clocks that are running at the same measured voltage.
+
+---
+
+## 5. RAM VDDQ
+
+VDDQ is searched downward one domain at a time.
+
+- Step size: **10 mV**
+- Wizard minimum: **400 mV**
+- Candidate test: **1 minute**
+- Final standalone validation: **30 minutes**
+
+The Wizard automatically applies and verifies the required CPU/GPU/RAM Temporary Overrides for the built-in test.
+
+---
+
+## 6. RAM VDD2
+
+VDD2 is searched after VDDQ has been established.
+
+- Step size: **12.5 mV**
+- Wizard minimum: **912.5 mV**
+- Candidate test: **1 minute**
+
+The final VDDQ + VDD2 pair is then validated together for **1 hour**.
+
+If the pair fails, the recovery logic changes only one rail at a time so the failing domain can be identified instead of making several voltage changes at once.
+
+---
+
+## 7. Handheld CPU/RAM validation
+
+Before CPU High UV tuning, the Wizard validates the tuned low-side CPU/RAM configuration at the normal handheld operating state:
+
+- CPU: **1020 MHz**
+- GPU: **384 MHz**
+- RAM: **1331.2 MHz**
+
+This validation runs for **1 hour**.
+
+---
+
+## 8. CPU High UV
+
+CPU High UV is searched upward at Nintendo Boost clocks.
+
+- Search direction: **higher High UV index = more aggressive undervolt**
+- Step size: **+1 level**
+- Wizard maximum: **13**
+- Candidate test: **1 minute**
+
+The Boost test state is:
+
+- CPU: **1785 MHz**
+- GPU: **76.8 MHz**
+- RAM: **1600 MHz**
+
+After the search, the Wizard performs the final Boost CPU/RAM validation sequence, including a **1-hour CPU memtester/RAM validation** followed by the **1-hour combined CPU + RAM validation** used by the current workflow.
+
+---
+
+## 9. Real-World Stability Check
+
+The final real-world section is a **recommendation**, not another built-in automated stress test.
+
+For final confirmation, play:
+
+**The Legend of Zelda: Tears of the Kingdom**
+
+for at least **1 hour**.
+
+Include normal gameplay, battles, fast travel, loading screens and Sleep/Wake transitions. Watch for crashes, freezes or unexpected reboots.
+
+### If instability occurs
+
+Change **only ONE setting at a time**, by one step, then play again.
+
+Recommended order:
+
+1. **Low VMIN** — raise voltage one step
+2. **VDDQ** — raise voltage one step
+3. **VDD2** — raise voltage one step
+4. **CPU High UV** — one step less aggressive
+5. **CPU Low UV** — one step less aggressive
+
+If the problem still appears, restore that setting to its previous value **before** trying the next setting.
+
+Do not change multiple domains at once. The point is to identify which tuned value actually causes the instability.
+
+---
+
+# Safety-state guard
+
+One of the most important current features is the all-domain state guard.
+
+During an active tuning run, the Wizard compares all five tunable values against the exact state it expects:
+
+- CPU Low UV
+- CPU Low VMIN
+- RAM VDDQ
+- RAM VDD2
+- CPU High UV
+
+The expected state follows either:
+
+- the recommended Preparation baseline, or
+- the values imported with **Use my current settings as baseline**,
+
+and then follows each last-known-good result as tuning progresses.
+
+The one value the Wizard currently asks you to change is treated as the intended target. An unrelated accidental change is highlighted red immediately.
+
+The same full check is performed before:
+
+- automatic CPU voltage scans,
+- automatic region validation,
+- every built-in stability/validation test,
+- rebooting after a persistent setting change.
+
+If anything is wrong, progression is blocked with **Unexpected setting change** until the red values are restored.
+
+This is specifically intended to prevent accidentally testing two changed domains at the same time.
+
+---
+
+# Built-in test engine
+
+The Wizard integrates several stress workloads.
+
+### CPU — Matrixprod + Hanoi Verify
+
+Derived from the GPLv2 Horizon-OC / Benchmark Toolbox implementation. Hanoi verification can detect calculation errors instead of relying only on whether the console crashes.
+
+Benchmark Toolbox credits the Stress-NX lineage to **Lineon**.
+
+### RAM — memtester v4
+
+Includes the established memtester algorithms such as Stuck Address, Random Value, XOR/SUB/MUL/DIV, Sequential Increment, Solid Bits, Checkerboard, Bit Spread, Bit Flip and Walking Ones/Zeroes.
+
+memtester credits **Simon Kirby** and **Charles Cazabon**. The Switch runner is adapted from Horizon-OC / Benchmark Toolbox under GPLv2.
+
+### Combined CPU + RAM
+
+Runs CPU and RAM stress together to expose failures that may not appear when the domains are tested independently.
+
+### GPU — deko3d Compute / Memory Stress
+
+Project-original deko3d compute/memory workload with CPU-side output verification.
+
+---
+
+## Automatic Temporary Overrides
+
+The user does not need to manually manage Temporary Overrides for built-in tests.
+
+Before a test, the Wizard:
+
+1. saves the existing CPU/GPU/RAM Temporary Overrides,
+2. applies the clocks required by the current test,
+3. reads them back and verifies that they are active,
+4. blocks the test if setup or verification fails,
+5. restores the previous overrides afterward.
+
+No test result is accepted when the requested clock setup could not be verified.
+
+---
 
 ## Known-result shortcuts
 
-If a value was already tested before using the Wizard, you do not have to repeat every stress test.
+Search and validation pages intentionally use different wording.
 
-During any built-in test stage:
+### Candidate search
 
-- **A** — run the built-in test normally
-- **+** — **KNOWN PASS / SKIP**: accept the current test/value as already known stable
-- **X** — **KNOWN FAIL / SKIP**: record the current test/value as a known failure
+When finding a new boundary:
 
-These shortcuts deliberately bypass the built-in stress test. Use them only for values you already trust from previous testing.
+- **Known stable** — continue in the search direction
+- **Known unstable** — return toward the last-good value
 
-**Exception:** the dynamic VMIN floor-probe stages are measurements, not PASS/FAIL stability tests. There, `A` performs the required measurement, `+` performs the same measurement for convenience, and `X` is disabled.
+For Low UV / High UV this means lowering the UV index after an unstable result.
 
-## Dynamic CPU Low VMIN detection
+For Low VMIN / VDDQ / VDD2 this means raising the voltage back toward the last-good value.
 
-The frequency where Low VMIN stops controlling CPU voltage is **not assumed to be identical on every Switch**.
+### Validation
 
-Horizon OC builds the Mariko CPU voltage curve from the CPU's own Speedo data, the selected CPU voltage table and CPU UV tuning, then clamps low-voltage entries to Low VMIN. Because of that, the VMIN-to-normal-curve crossover can differ between consoles/settings.
+Long/final validation pages use:
 
-After the Wizard finds a Low VMIN candidate it performs a short ascending sweep:
+- **Known PASS / Skip validation test**
 
-**510 -> 612 -> 714 -> 816 -> 918 -> 1020 MHz**
+There is no generic KNOWN FAIL shortcut on the long validation pages. A real built-in failure is recorded by the test engine, and crashes/reboots are handled through interrupted-test detection.
 
-GPU remains **384 MHz** and RAM remains **1331.2 MHz**.
-
-Starting with beta.16, the Wizard sets these Temporary Overrides itself for this scan. It saves the previous CPU/GPU/RAM overrides, applies the scan clocks, waits for HOC/governor to settle, then reads the **live CPU rail voltage reported by Horizon OC**. Every point uses **3 valid context samples** and the median; samples are accepted only while HOC reports the requested CPU clock as actually applied. After the full scan, the previous Temporary Overrides are restored.
-
-These sweep points are **measurement-only**. They do not each run another 1-minute stress test. Starting with beta.16, all six points are measured so the Wizard can identify every distinct CPU-voltage region, not only the VMIN floor.
-
-Readings are rounded/grouped on HOC's 5 mV voltage steps. The Wizard then selects the **highest CPU frequency in each observed voltage region** for 1-hour CPU validation.
-
-Example: if a console reports roughly 570 mV through 816 MHz, ~585 mV at 918 MHz and ~600 mV at 1020 MHz, the long validations are **816 @ 570**, **918 @ 585** and **1020 @ 600**.
-
-Lower CPU clocks within the same voltage region are computationally less demanding, while normal Home/Sleep/Wake/game transitions remain part of final validation.
+Use skip options only for results you already trust from previous testing.
 
 ---
 
 # Crash / reboot detection
 
-Before every built-in test, the Wizard saves a persistent `testRunning` marker.
+Before every built-in test, the Wizard stores a persistent `testRunning` marker.
 
-If the console freezes, crashes or reboots during a test, the marker remains set. On the next launch the Wizard asks whether the previous test crashed:
+If the console freezes, crashes or reboots while the test is running, the marker remains set. On the next launch the Wizard asks whether the previous test failed because of the crash/reboot.
 
-- **YES** — count it as FAIL and use the safer recovery path
-- **NO** — treat it as a manual interruption and rerun the same test
-
-Cancelling a running test with **B** does not count as FAIL.
-
----
-
-# Persistent tuning values remain manual
-
-The Wizard does **not** write persistent CPU UV, Low/High VMIN, VDDQ or VDD2 tuning values and does **not** edit `hoc.kip`. Horizon OC remains the place where those tuning values are changed.
-
-The beta.16 automatic Low VMIN scan is the first exception for **Temporary Overrides only**: the Wizard can set CPU/GPU/RAM Temporary Overrides through HOC's public `hoc:clk` IPC, perform the scan, and restore the previous overrides afterward.
-
-Progress is stored at:
-
-`/switch/HOC-Undervolting-Wizard/state.ini`
-
-Final results are stored at:
-
-`/switch/HOC-Undervolting-Wizard/results.txt`
+- **YES** — count it as FAIL and follow the safer recovery path
+- **NO** — treat it as a manual interruption and run the same test again
+- **B** during a running test cancels it without recording PASS or FAIL
 
 ---
 
-# Installation
+# Persistent settings and reboots
 
-## Requirements
+Persistent tuning values remain Horizon OC settings.
 
-- Nintendo Switch **Mariko / Switch V2 / Lite / OLED**
-- Atmosphere CFW
-- Horizon OC installed and working
-- Hekate strongly recommended for boot-failure recovery
+The Wizard can verify the active/persistent values and, on supported Horizon OC 2.5.1 paths, automatically apply the Preparation baseline and CPU Low UV / Low VMIN values.
 
-The Wizard requires Homebrew Menu **title takeover / Full Application Mode**. Applet Mode is blocked at startup.
+For manually changed values, the Wizard waits until the requested setting is detected before allowing the workflow to continue.
 
-## Install
+When a persistent change requires a reboot:
 
-1. Download `HOC-Undervolting-Wizard.nro` from the latest GitHub release. Once an updater-capable build is installed, later builds can be installed by the in-app updater.
-2. Create:
+1. the requested value is verified,
+2. the Wizard shows a **REBOOT REQUIRED** modal,
+3. the console can be restarted directly from the Wizard,
+4. after normal CFW boots, reopen the Wizard,
+5. confirm whether the new value booted normally.
 
-   `/switch/HOC-Undervolting-Wizard/`
-
-3. Copy the NRO to:
-
-   `/switch/HOC-Undervolting-Wizard/HOC-Undervolting-Wizard.nro`
-
-4. Boot Atmosphere and start the Wizard from Homebrew Menu.
-
-An old state at `/switch/HOC-Battery-Wizard/state.ini` is automatically imported when no new state file exists yet.
+If normal CFW does not boot, use the safe recovery path below.
 
 ---
 
 # Safe boot recovery
 
-Keep a Hekate CFW entry that does **not** load Horizon OC / `hoc.kip`.
+Keep a Hekate boot entry that starts CFW **without Horizon OC / `hoc.kip`**.
 
-If a tuning value prevents normal CFW from booting:
+If an undervolt prevents normal CFW from booting:
 
 1. Boot Hekate.
-2. Start CFW without Horizon OC / `hoc.kip`.
-3. Open Horizon OC.
-4. Restore the previous known-good value shown by the Wizard.
-5. Reboot normally.
-6. Continue validation.
+2. Start **CFW No OC**.
+3. Restore the previous known-good value in Horizon OC.
+4. Reboot normal CFW.
+5. Open the Wizard again and continue.
+
+The Wizard keeps the last-known-good value so the recovery target remains clear.
 
 ---
 
-# Battery starting setup
+# Results
 
-Prepare the Battery profile before tuning using the exact guide starting values below. If you already know stable values, use the Wizard's KNOWN PASS / SKIP controls during the corresponding tuning stages instead of changing the starting baseline.
+Wizard progress is stored at:
 
-## Horizon OC
+```text
+/switch/HOC-Undervolting-Wizard/state.ini
+```
 
-### General
+Final results are written to:
 
-- **Uncapped Clocks: OFF**
+```text
+/switch/HOC-Undervolting-Wizard/results.txt
+```
 
-### RAM Settings
+The result file includes:
 
-- **HP Mode: OFF**
-- **RAM Max Clock: 1600 MHz**
-- **VDD2: 1175 mV**
-- **VDDQ: automatically selected from detected RAM**
-  - **640 mV:** NEE/x267, AA-MGCL, AM-MGCJ, AB-MGCL, NME
-  - **600 mV:** WT:B, WT:F, WT:E
+- detected RAM module,
+- VDDQ starting point,
+- CPU UV table,
+- final CPU Low UV,
+- final CPU Low VMIN,
+- final RAM VDDQ,
+- final RAM VDD2,
+- final CPU High UV,
+- detected CPU voltage regions and representative clocks when available.
 
-### CPU Settings
-
-- **CPU Max Clock: lowest selectable value**
-  - current Mariko HOC builds show **1963 MHz** as the lowest selectable CPU Max Clock
-- **Low VMIN: 620 mV**
-- **High VMIN: 750 mV**
-
-- **CPU UV Table: 1683 MHz Tbreak**
-- **Low UV: 0**
-- **High UV: 0**
-
-## HOC Toolkit
-
-- **CPU Boost Clock: lowest selectable value**
-  - stock Nintendo Boost target used by this workflow is **1785 MHz**
-
-The Wizard verifies persistent HOC values before rebooting. When the requested value is detected, a green confirmation is shown and **A** requests the restart. After reopening, confirm whether the console booted normally before the Wizard continues to the stability test.
+These are the values intended for the **Performance Modes Battery Mode** workflow.
 
 ---
 
-# Wizard tuning order
+# Search limits
 
-1. **CPU Low UV**
-   - 1020 / 384 / 1331.2
-   - +1 UV level per search step
-   - 1-minute search, then 1-hour candidate confirmation
+The current Wizard limits are deliberately bounded:
 
-2. **CPU Low VMIN**
-   - conservative start: 620 mV
-   - -5 mV per search step
-   - hard Wizard floor: **570 mV**
-   - quick boundary search at **510 / 384 / 1331.2**
-   - full voltage scan at 510/612/714/816/918/1020 with visible 3-sample progress
-   - group the measured values into distinct 5 mV CPU-voltage regions
-   - 1-hour confirmation at the **highest frequency of every detected voltage region**
-   - then verify Home, Sleep/Wake, game launch/close
+| Setting | Direction | Step | Wizard limit |
+| --- | --- | ---: | ---: |
+| CPU Low UV | higher index | +1 | 8 |
+| CPU Low VMIN | lower voltage | -10 mV | 570 mV minimum |
+| RAM VDDQ | lower voltage | -10 mV | 400 mV minimum |
+| RAM VDD2 | lower voltage | -12.5 mV | 912.5 mV minimum |
+| CPU High UV | higher index | +1 | 13 |
 
-3. **RAM VDDQ**
-   - 1785 / 76.8 / 1600
-   - Wizard search interval: **10 mV**
-   - Horizon OC itself exposes 5 mV VDDQ steps, so one Wizard step equals two HOC UI steps
-   - 1-minute search, then 1-hour confirmation
-
-4. **RAM VDD2**
-   - 1785 / 76.8 / 1600
-   - **12.5 mV** per step
-   - 1-minute search, then 1-hour confirmation
-
-5. **Final VDDQ + VDD2 together at Boost clocks**
-   - 1785 / 76.8 / 1600
-   - Memtester for 1 hour
-   - if it fails, first try **VDDQ +10 mV**
-   - if that still fails, restore VDDQ and try **VDD2 +12.5 mV**
-
-6. **RAM at normal handheld clocks**
-   - 1020 / 384 / 1331.2
-   - Memtester for 1 hour
-
-7. **CPU High UV**
-   - 1785 / 76.8 / 1600
-   - +1 UV level per search step
-   - 1-minute search, then 1-hour confirmation
-
-8. **High UV + final RAM voltages**
-   - 1785 / 76.8 / 1600
-   - combined CPU + RAM test for 1 hour
-   - if it fails, make High UV one level safer before blaming RAM rails
-
-9. **Final normal handheld validation**
-   - 1020 / 384 / 1331.2
-   - CPU 1 hour
-   - RAM 1 hour
-   - GPU 1 hour
-
-10. **Final Nintendo Boost validation**
-    - 1785 / 76.8 / 1600
-    - CPU 1 hour
-    - RAM 1 hour
-    - combined CPU + RAM 1 hour
-
-11. **Final real-world validation**
-    - remove Temporary Overrides
-    - use Home, loading, Sleep/Wake and CPU Boost transitions normally
-    - play **The Legend of Zelda: Tears of the Kingdom** for at least 1 hour
-
----
-
-# Search increments / limits
-
-- CPU Low UV: **+1 level**
-- CPU High UV: **+1 level**
-- CPU Low VMIN: **-5 mV**, minimum **570 mV**
-- RAM VDDQ Wizard search: **-10 mV**
-- RAM VDD2: **-12.5 mV**
-
-Horizon OC currently exposes VDDQ in 5 mV increments; the Wizard deliberately uses a coarser 10 mV search to keep the Battery workflow shorter.
+Reaching a Wizard limit does not mean the hardware could never go further. It means the guided workflow intentionally stops there and moves to validation.
 
 ---
 
 # Controls
 
-Normal built-in test stages:
+Controls change slightly with the current page, but the general model is:
 
-- **A** — start built-in test
-- **+** — known PASS / skip test
-- **X** — known FAIL / skip test
-- **B** — exit and save progress
+- **A** — check / continue / start the requested test
+- **Y** — automatic persistent setting where supported
+- **+** — known stable / known PASS shortcut where available
+- **X** — known unstable during boundary search, or negative answer in decision dialogs
+- **B** — back / exit without discarding saved Wizard progress
 - **Minus** — reset Wizard progress
 
-When a persistent Horizon OC value must change:
-
-- **A** — verify the requested value against Horizon OC
-- if correct, a green confirmation screen appears
-- **A** again — request console restart
-- after reopening: **A = booted normally**, **X = did not boot**, **B = decide later**
-
-Automatic Low VMIN voltage scan:
-
-- **A** — start the complete automatic 510 -> 1020 MHz scan
-- no manual Temporary Override changes are required during the scan
-- after completion, **A** continues to voltage-region validation
-
-During a running stress test:
-
-- **B** — cancel without recording PASS or FAIL
-
-After an interrupted/crashed test is detected:
-
-- **A** — previous test crashed; record FAIL
-- **X** — it was interrupted manually; rerun it
+A reset also clears the one-time disclaimer acceptance so the safety notice is shown again when a new tuning run starts.
 
 ---
 
-# Results and Performance Modes
+# Safety
 
-When the workflow is complete, the Wizard writes:
+Undervolting and overclocking are experimental. Stability differs from console to console.
 
-`/switch/HOC-Undervolting-Wizard/results.txt`
+Possible consequences of unstable settings include:
 
-It contains:
+- crashes,
+- freezes,
+- boot failures,
+- save/data corruption,
+- unexpected reboots,
+- potentially hardware damage.
 
-- detected RAM module and VDDQ starting point
-- CPU Low UV
-- CPU Low VMIN
-- dynamically detected highest Low VMIN floor clock when available
-- every detected CPU voltage region and its highest validated frequency
-- RAM VDDQ
-- RAM VDD2
-- CPU High UV
+Use the Wizard at your own risk. Built-in stress tests improve repeatability but cannot prove absolute stability.
 
-Use the final values in:
+During deliberately unstable RAM testing, avoid installing/updating software or copying important files. RAM instability can corrupt data before a test reports a mismatch.
 
-`Performance Modes -> Save Settings -> as Battery Mode`
-
-The Wizard intentionally does not transfer persistent HOC settings automatically.
-
----
-
-# License and source availability
-
-**HOC Undervolting Wizard v0.4 is free software licensed under GNU GPL version 2 only (`GPL-2.0-only`).**
-
-GPLv2 CPU/RAM test code is incorporated into the executable.
-
-- Complete project license: [`LICENSE`](LICENSE)
-- Upstream authors, source paths, modification notes and permissive-library notices: [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md)
-
-The built-in test screen displays the active engine's credits and GPL/no-warranty notice.
-
-When distributing an NRO, the corresponding complete buildable source must remain available under GPLv2. The intended release model is to publish the NRO and its source from this same repository.
-
-### Stress-NX provenance
-
-The Wizard does **not** copy code from an unidentified/unlicensed standalone Stress-NX repository. Matrixprod/Hanoi is sourced from the **GPLv2 Horizon-OC / Benchmark Toolbox** source tree, which credits Stress-NX to Lineon.
-
-### memtester provenance
-
-The memory algorithms are from **memtester v4**. The Switch runner is adapted from Horizon-OC / Benchmark Toolbox.
+The final real-world check is therefore still recommended even after all built-in tests pass.
 
 ---
 
 # Building from source
 
-Most users should use the prebuilt NRO release.
+Most users should use the prebuilt NRO from GitHub Releases.
 
-Developers need devkitPro / devkitA64, libnx, deko3d and `uam`:
+Developers need devkitPro / devkitA64, libnx, deko3d and the project build dependencies.
 
 ```bash
 export DEVKITPRO=/opt/devkitpro
@@ -534,27 +574,30 @@ make
 
 Output:
 
-`HOC-Undervolting-Wizard.nro`
+```text
+HOC-Undervolting-Wizard.nro
+```
 
-GitHub Actions builds the NRO automatically on pushes and pull requests.
+GitHub Actions also builds the NRO automatically.
 
 ---
 
-# Safety notes
+# License and credits
 
-Undervolting stability differs from console to console. A value that works on one Switch may fail on another.
+**HOC Undervolting Wizard v0.4 is free software licensed under GNU GPL version 2 only (`GPL-2.0-only`).**
 
-During deliberately unstable RAM testing, avoid installing/updating software or copying important files. RAM instability can corrupt data before an application reports a mismatch.
+GPLv2 CPU/RAM test code is incorporated into the executable.
 
-The built-in tests improve repeatability, but cannot prove absolute stability. Keep the final normal-use and gameplay validation.
+- Complete project license: [`LICENSE`](LICENSE)
+- Full upstream attribution and notices: [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md)
 
-## Credits summary
+Credits summary:
 
 - **Lineon** — Stress-NX / Matrixprod lineage
-- **Horizon-OC / Benchmark Toolbox contributors** — GPLv2 CPU and memtester integration source and `hoc:clk` interfaces
+- **Horizon-OC / Benchmark Toolbox contributors** — GPLv2 CPU/memtester integration and HOC interfaces
 - **Simon Kirby** — original memtester work
 - **Charles Cazabon** — memtester v2/v4 rewrite
 - **fincs / devkitPro** — deko3d
 - **switchbrew / libnx authors** — libnx
 
-See `THIRD_PARTY_LICENSES.md` for full notices.
+When distributing an NRO, the corresponding complete buildable source must remain available under GPLv2.

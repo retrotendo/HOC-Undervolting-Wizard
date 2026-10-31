@@ -1,0 +1,32 @@
+name: Run beta50 UI patch
+
+on:
+  push:
+    branches:
+      - beta50-final-info-layout
+    paths:
+      - '.github/workflows/run-beta50-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: beta50-final-info-layout
+          fetch-depth: 0
+
+      - name: Apply beta50 patch
+        run: python3 .github/scripts/apply_beta50.py
+
+      - name: Commit patched source
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add source/main.cpp source/gui_console.cpp source/gui_console.hpp Makefile
+          git commit -m 'Apply beta50 final info layout' || exit 0
+          git push origin HEAD:beta50-final-info-layout

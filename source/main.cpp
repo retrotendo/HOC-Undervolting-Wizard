@@ -199,6 +199,7 @@ struct ConfigCheckState {
 };
 
 bool g_configPrompt = false;
+bool g_configPromptSafetyOnly = false;
 bool g_configDebugScreen = false;
 int g_configDebugPage = 0;
 HocMonConfigDebug g_configDebug{};
@@ -1111,6 +1112,48 @@ bool verifyPersistentSettings(u32 mask) {
     return g_configCheck.readOk && configMatchesCurrent(mask, g_configCheck.current);
 }
 
+
+u32 wizardTunableMismatchMask(const HocMonConfig& c) {
+    u32 mask = Config_None;
+    if (c.lowUv != targetLowUv()) mask |= Config_LowUv;
+    if (c.lowVminMv != targetLowVmin()) mask |= Config_LowVmin;
+    if (c.vddqUv != (u32)targetVddqMv() * 1000U) mask |= Config_Vddq;
+    if (c.vdd2Uv != (u32)targetVdd2Uv()) mask |= Config_Vdd2;
+    if (c.highUv != targetHighUv()) mask |= Config_HighUv;
+    return mask;
+}
+
+bool guardWizardTunableState() {
+    // During the active guide, all five tunable values must match the exact
+    // state the Wizard expects. The one setting currently being changed is
+    // already represented by target*(); every other setting remains at its
+    // last known-good (or imported baseline) value.
+    HocMonConfig current{};
+    bool readOk = R_SUCCEEDED(hocmonGetConfig251(&current));
+    if (!readOk) readOk = readHocConfigIni(current);
+
+    if (!readOk) {
+        g_configCheck = ConfigCheckState{};
+        g_configCheck.readOk = false;
+        g_configCheck.rc = 0xF024;
+        g_configCheck.mask = Config_None;
+        g_configPromptSafetyOnly = true;
+        g_configPrompt = true;
+        return false;
+    }
+
+    const u32 mismatch = wizardTunableMismatchMask(current);
+    if (mismatch == Config_None) return true;
+
+    g_configCheck = ConfigCheckState{};
+    g_configCheck.readOk = true;
+    g_configCheck.current = current;
+    g_configCheck.mask = mismatch;
+    g_configPromptSafetyOnly = true;
+    g_configPrompt = true;
+    return false;
+}
+
 void clearVminSweepData() {
     g.vminObsMask = 0;
     g.vminValidateCount = 0;
@@ -1283,7 +1326,11 @@ gui::View buildGuiView() {
         v.stageTitle = "Preparation - Setting not ready";
 
     const u32 mask = guiInstructionMask();
-    if (mask & Config_Prepare) {
+    if (g_configPromptSafetyOnly) {
+        v.instructionTitle = "Unexpected setting change";
+        v.instructionLine1 = "Restore the red values";
+        v.instructionLine2 = "A : Check again";
+    } else if (mask & Config_Prepare) {
         v.instructionTitle = "Set the Preparation values";
         v.instructionLine1 = "Horizon OC + HOC Toolkit";
         v.instructionLine2 = "Match the SET values below";
@@ -1426,11 +1473,14 @@ gui::View buildGuiView() {
             v.values[3].mismatch = (int)c.vdd2Uv != STOCK_VDD2_UV;
             v.values[4].mismatch = c.highUv != STOCK_HIGH_UV;
         } else {
-            if (mask & Config_LowUv) v.values[0].mismatch = c.lowUv != targetLowUv();
-            if (mask & Config_LowVmin) v.values[1].mismatch = c.lowVminMv != targetLowVmin();
-            if (mask & Config_Vddq) v.values[2].mismatch = (int)(c.vddqUv / 1000U) != targetVddqMv();
-            if (mask & Config_Vdd2) v.values[3].mismatch = (int)c.vdd2Uv != targetVdd2Uv();
-            if (mask & Config_HighUv) v.values[4].mismatch = c.highUv != targetHighUv();
+            // Always compare every tunable value against the current Wizard
+            // state, not just the setting being changed on this page. This
+            // immediately exposes accidental changes in another domain.
+            v.values[0].mismatch = c.lowUv != targetLowUv();
+            v.values[1].mismatch = c.lowVminMv != targetLowVmin();
+            v.values[2].mismatch = c.vddqUv != (u32)targetVddqMv() * 1000U;
+            v.values[3].mismatch = c.vdd2Uv != (u32)targetVdd2Uv();
+            v.values[4].mismatch = c.highUv != targetHighUv();
         }
     }
     return v;
@@ -1835,6 +1885,16 @@ void renderConfigPrompt() {
         uiPrintf(r + 1, "Result : 0x%08X", g_configCheck.rc);
         uiPrintf(r + 4, "A : Check again");
         uiPrintf(r + 5, "B : Back");
+        uiPresent();
+        return;
+    }
+
+    if (g_configPromptSafetyOnly) {
+        uiPrintf(5, "One or more active values no longer match the Wizard state.");
+        uiPrintf(7, "Restore the red values shown on the right.");
+        uiPrintf(9, "Only change the setting the Wizard currently asks you to change.");
+        uiPrintf(12, "A : Check again");
+        uiPrintf(13, "B : Back");
         uiPresent();
         return;
     }
@@ -2775,6 +2835,7 @@ bool sampleCpuVoltageAt(u32 cpuHz, int index, int total, int& outMv) {
 }
 
 void runAutomaticVoltageScan(bool forLowUv) {
+    if (!guardWizardTunableState()) return;
     static const u32 cpuHz[6] = {
         CLOCK_CPU_VMIN_510_HZ, CLOCK_CPU_LOW_HZ, CLOCK_CPU_VMIN_714_HZ,
         CLOCK_CPU_VMIN_MID_HZ, CLOCK_CPU_VMIN_918_HZ, CLOCK_CPU_NORMAL_HZ,
@@ -2855,6 +2916,7 @@ void skipAutomaticRegionValidation(bool forLowUv) {
 }
 
 void runAutomaticRegionValidation(bool forLowUv) {
+    if (!guardWizardTunableState()) return;
     if (g.vminValidateCount <= 0) {
         g_resultAction = "No voltage regions were available. Run the voltage scan again.";
         g_lastKind = stress::Kind::Cpu;
@@ -3045,6 +3107,7 @@ void stressDisplayForStage(Stage st, const OverrideExpectation& expected,
 }
 
 void runCurrentTest() {
+    if (!guardWizardTunableState()) return;
     stress::Kind kind;
     int seconds = 0;
     if (!testPlan(g.stage, kind, seconds)) return;
@@ -3406,6 +3469,21 @@ int main(int argc, char** argv) {
         }
 
         if (g_configPrompt) {
+            if (g_configPromptSafetyOnly) {
+                if (k & HidNpadButton_A) {
+                    if (guardWizardTunableState()) {
+                        g_configPromptSafetyOnly = false;
+                        g_configPrompt = false;
+                    }
+                    redraw = true;
+                } else if (k & HidNpadButton_B) {
+                    g_configPromptSafetyOnly = false;
+                    g_configPrompt = false;
+                    redraw = true;
+                }
+                svcSleepThread(20'000'000);
+                continue;
+            }
             if ((k & HidNpadButton_Y) && (g_configCheck.mask & (Config_Prepare | Config_LowUv | Config_LowVmin))) {
                 g_autoSetMask = g_configCheck.mask;
                 g_autoPrepError.clear();
@@ -3465,6 +3543,16 @@ int main(int argc, char** argv) {
 
         if (g_rebootConfirm) {
             if (k & HidNpadButton_A) {
+                const bool safeToReboot = (g.stage == Stage::Preparation)
+                    ? verifyPersistentSettings(Config_Prepare)
+                    : guardWizardTunableState();
+                if (!safeToReboot) {
+                    g_rebootConfirm = false;
+                    if (g.stage == Stage::Preparation) g_configPrompt = true;
+                    redraw = true;
+                    svcSleepThread(20'000'000);
+                    continue;
+                }
                 g.pendingConfigMask = g_configCheck.mask;
                 g.rebootPending = true;
                 g_rebootConfirm = false;
@@ -3635,7 +3723,7 @@ int main(int argc, char** argv) {
             const bool bootSearch = g.stage == Stage::LowUvQuick || g.stage == Stage::LowVminQuick;
                 const u32 cfgMask = bootSearch ? defaultConfigMaskForStage(g.stage) : activeConfigMask();
                 if (cfgMask != Config_None) {
-                if (verifyPersistentSettings(cfgMask)) {
+                if (verifyPersistentSettings(cfgMask) && guardWizardTunableState()) {
                     if (bootSearch) g.stageReadyAfterBoot = false;
                     g.pendingConfigMask = cfgMask;
                     g_configCheck.mask = cfgMask;

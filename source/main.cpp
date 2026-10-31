@@ -155,6 +155,7 @@ std::string g_resultAction;
 bool g_manualPass = false;
 bool g_lastVminAtFloor = false;
 bool g_guiPulse = false;
+int g_realWorldPage = 0;
 
 void uiPresent();
 
@@ -1322,6 +1323,11 @@ gui::View buildGuiView() {
     v.preparationLayout = (g.stage == Stage::Preparation && !g_autoPrepConfirm && !g_rebootConfirm);
     v.hideValuesCard = (g.stage == Stage::HardwareDetection);
     v.fullWidthLayout = g_resultScreen || g.stage == Stage::RealWorldValidate || g.stage == Stage::Complete;
+    v.completionLayout = (g.stage == Stage::Complete);
+    if (g.stage == Stage::Complete)
+        v.summaryFooter = "Saved to Performance Modes · Battery Mode";
+    if (g.stage == Stage::RealWorldValidate && g_realWorldPage == 1)
+        v.stageTitle = "If Instability Occurs";
     if (v.preparationLayout && g_configPrompt && (g_configCheck.mask & Config_Prepare))
         v.stageTitle = "Preparation - Setting not ready";
 
@@ -2231,31 +2237,38 @@ void renderTestStage() {
 
 void renderRealWorld() {
     title();
-    uiPrintf(5, "For final confirmation, play The Legend of Zelda: Tears of the Kingdom for at least 1 hour.");
-    uiPrintf(7, "Use normal gameplay, fast travel, battles, loading screens and Sleep/Wake.");
-    uiPrintf(9, "If a crash, freeze or reboot occurs, change only ONE setting by one step, then play again.");
-    uiPrintf(11, "Recommended order:");
-    uiPrintf(12, "Low VMIN -> VDDQ -> VDD2 -> CPU High UV -> CPU Low UV");
-    uiPrintf(14, "Low VMIN / VDDQ / VDD2: raise the voltage by one step.");
-    uiPrintf(15, "CPU High UV / CPU Low UV: move one step toward a less aggressive undervolt.");
-    uiPrintf(17, "If it still fails, restore that setting to its previous value before trying the next one.");
-    uiPrintf(18, "Never change more than one setting at a time.");
+    if (g_realWorldPage == 0) {
+        uiPrintf(5, "Play The Legend of Zelda: Tears of the Kingdom for at least 1 hour.");
+        uiPrintf(7, "During the check:");
+        uiPrintf(8, "1. Use normal gameplay");
+        uiPrintf(9, "2. Include battles and fast travel");
+        uiPrintf(10, "3. Use loading screens");
+        uiPrintf(11, "4. Test Sleep / Wake");
+        uiPrintf(13, "Watch for crashes, freezes or unexpected reboots.");
+        uiPrintf(17, "A : Next - If instability occurs");
+        uiPrintf(18, "+ : Stable / Continue to results");
+        uiPrintf(19, "B : Exit");
+        printResetHint(19);
+        return;
+    }
+
+    uiPrintf(5, "Change only ONE setting at a time, then test the game again.");
+    uiPrintf(7, "Recommended order:");
+    uiPrintf(8, "1. Low VMIN - raise one step");
+    uiPrintf(9, "2. VDDQ - raise one step");
+    uiPrintf(10, "3. VDD2 - raise one step");
+    uiPrintf(11, "4. CPU High UV - one step less aggressive");
+    uiPrintf(12, "5. CPU Low UV - one step less aggressive");
+    uiPrintf(14, "If the problem remains, restore that setting to its previous value.");
+    uiPrintf(15, "Then move to the next setting in the list and test again.");
+    uiPrintf(17, "Never change more than one setting at the same time.");
     uiPrintf(20, "A : Continue to results");
-    uiPrintf(21, "B : Exit");
+    uiPrintf(21, "B : Back");
     printResetHint(21);
 }
 
 void renderComplete() {
     title();
-    uiPrintf(5, "\x1b[32mUNDERVOLTING COMPLETE\x1b[0m");
-    uiPrintf(7, "Final values:");
-    uiPrintf(8, "CPU Low UV   : %d", g.lowUvGood);
-    uiPrintf(9, "CPU Low VMIN : %d mV", g.lowVminGood);
-    uiPrintf(10, "RAM VDDQ     : %d mV", g.vddqGood);
-    uiPrintf(11, "RAM VDD2     : %s", formatVdd2(g.vdd2GoodUv).c_str());
-    uiPrintf(12, "CPU High UV  : %d", g.highUvGood);
-    uiPrintf(14, "Saved to:");
-    uiPrintf(15, "/switch/HOC-Undervolting-Wizard/results.txt");
     uiPrintf(17, "B : Exit");
     printResetHint(17);
 }
@@ -2654,6 +2667,7 @@ void handlePass() {
         case Stage::BoostCpuMemValidate:
             // Legacy beta states: these tests are redundant in beta39+.
             g.stage = Stage::RealWorldValidate;
+            g_realWorldPage = 0;
             break;
         case Stage::RealWorldValidate: g.stage = Stage::Complete; writeResults(); break;
         case Stage::Complete: break;
@@ -3634,8 +3648,13 @@ int main(int argc, char** argv) {
             g_resetConfirm = true;
             redraw = true;
         } else if (k & HidNpadButton_B) {
-            saveState();
-            break;
+            if (g.stage == Stage::RealWorldValidate && g_realWorldPage == 1) {
+                g_realWorldPage = 0;
+                redraw = true;
+            } else {
+                saveState();
+                break;
+            }
         } else if (g.stage == Stage::HardwareDetection) {
             if (k & HidNpadButton_A) {
                 if (!g.ramDetected) detectRamHardware();
@@ -3668,9 +3687,11 @@ int main(int argc, char** argv) {
             }
         } else if ((k & HidNpadButton_Plus) && g.stage != Stage::Preparation) {
             if (g.stage == Stage::RealWorldValidate) {
-                g_manualPass = true;
-                handlePass();
-                g_manualPass = false;
+                if (g_realWorldPage == 0) {
+                    g_manualPass = true;
+                    handlePass();
+                    g_manualPass = false;
+                }
             } else if (g.stage == Stage::LowUvValidateQuick) {
                 skipAutomaticRegionValidation(true);
             } else if (g.stage == Stage::LowVminPlateauValidate) {
@@ -3720,6 +3741,15 @@ int main(int argc, char** argv) {
                 redraw = true;
             }
         } else if (k & HidNpadButton_A) {
+            if (g.stage == Stage::RealWorldValidate) {
+                if (g_realWorldPage == 0)
+                    g_realWorldPage = 1;
+                else
+                    handlePass();
+                redraw = true;
+                svcSleepThread(20'000'000);
+                continue;
+            }
             const bool bootSearch = g.stage == Stage::LowUvQuick || g.stage == Stage::LowVminQuick;
                 const u32 cfgMask = bootSearch ? defaultConfigMaskForStage(g.stage) : activeConfigMask();
                 if (cfgMask != Config_None) {

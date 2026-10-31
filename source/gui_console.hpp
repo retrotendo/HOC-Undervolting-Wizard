@@ -36,6 +36,8 @@ struct View {
     bool preparationLayout = false;
     bool hideValuesCard = false;
     bool fullWidthLayout = false;
+    bool completionLayout = false;
+    std::string summaryFooter;
     bool havePreparationActiveValues = false;
     std::vector<PreparationRow> preparationRows;
 };

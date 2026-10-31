@@ -388,6 +388,44 @@ void drawMainCard() {
     }
     body.swap(compactBody);
 
+    if (g_view.completionLayout) {
+        const int cx = x + w / 2;
+        const std::string done = "UNDERVOLTING COMPLETE";
+        drawText(cx - textWidth(done, 18) / 2, y + 122, 18, C_GREEN, done);
+
+        const std::string heading = "Final values";
+        drawText(cx - textWidth(heading, 16) / 2, y + 160, 16, C_CYAN, heading);
+
+        const int blockW = 430;
+        const int blockX = cx - blockW / 2;
+        const int blockY = y + 195;
+        const int rowH = 42;
+        roundedRect(blockX, blockY, blockW, rowH * 5, 15, C_PANEL_2);
+        for (int i = 0; i < 5; ++i) {
+            if (i) fillRect(blockX + 18, blockY + i * rowH, blockW - 36, 1, mix(C_PANEL_2, C_BORDER, 72));
+            const ValueRow& value = g_view.values[i];
+            drawText(blockX + 24, blockY + i * rowH + 10, 16, C_MUTED, value.label);
+            drawTextRight(blockX + blockW - 24, blockY + i * rowH + 9, 18, C_TEXT, value.value);
+        }
+
+        if (!g_view.summaryFooter.empty()) {
+            drawText(cx - textWidth(g_view.summaryFooter, 17) / 2, blockY + rowH * 5 + 27, 17, C_TEXT, g_view.summaryFooter);
+        }
+
+        if (!actions.empty()) {
+            const int ah = 39;
+            const int gap = 8;
+            const int total = int(actions.size()) * ah + (int(actions.size()) - 1) * gap;
+            int ay = y + h - 24 - total - (reset.empty() ? 0 : 28);
+            for (const auto& a : actions) {
+                drawActionButton(x + 26, ay, w - 52, ah, a);
+                ay += ah + gap;
+            }
+        }
+        if (!reset.empty()) drawText(x + 28, y + h - 24, 14, C_MUTED, reset);
+        return;
+    }
+
     if (g_view.preparationLayout) {
         int by = y + 120;
         if (g_view.stageTitle.find("not ready") != std::string::npos) {

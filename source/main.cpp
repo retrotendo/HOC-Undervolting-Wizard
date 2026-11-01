@@ -2360,15 +2360,16 @@ void renderRealWorld() {
         return;
     }
 
-    uiPrintf(5, "Change only ONE setting at a time. Change it by one step, then play again.");
-    uiPrintf(7, "Recommended order:");
-    uiPrintf(9, "1. Low VMIN - raise voltage one step");
-    uiPrintf(10, "2. VDDQ - raise voltage one step");
-    uiPrintf(11, "3. VDD2 - raise voltage one step");
-    uiPrintf(12, "4. CPU High UV - one step less aggressive");
-    uiPrintf(13, "5. CPU Low UV - one step less aggressive");
-    uiPrintf(15, "If it still fails, restore that setting to its previous value before trying the next one.");
-    uiPrintf(17, "Never change multiple settings at the same time.");
+    uiPrintf(5, "Change only ONE setting at a time.");
+    uiPrintf(6, "Change one step, then play again.");
+    uiPrintf(8, "Recommended order:");
+    uiPrintf(10, "1. Low VMIN - raise one step");
+    uiPrintf(11, "2. VDDQ - raise one step");
+    uiPrintf(12, "3. VDD2 - raise one step");
+    uiPrintf(13, "4. CPU High UV - one step less aggressive");
+    uiPrintf(14, "5. CPU Low UV - one step less aggressive");
+    uiPrintf(16, "Still unstable? Restore the previous value.");
+    uiPrintf(17, "Then try the next setting.");
     uiPrintf(20, "A : Continue to results");
     uiPrintf(21, "B : Back");
     printResetHint(21);
@@ -2413,9 +2414,8 @@ void renderPerformanceSaveNotice() {
     m.eyebrow = "PERFORMANCE MODES";
     m.title = "Battery profile saved";
     m.body = {
-        "Saved to Performance Modes -> Battery Mode.",
-        "Horizon OC config.ini, hoc.kip and ReverseNX-RT were copied.",
-        "The active Performance Modes profile was not changed."
+        "Battery Profile saved to Performance Modes.",
+        "The active profile was not changed."
     };
     m.primaryAction = "Continue to results";
     m.tone = gui::ModalTone::Green;

@@ -1,0 +1,31 @@
+name: Run beta53 Performance Modes save patch
+
+on:
+  push:
+    branches:
+      - beta53-performance-modes-save
+    paths:
+      - '.github/scripts/apply_beta53.py'
+      - '.github/workflows/run-beta53-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: beta53-performance-modes-save
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Apply beta53 patch
+        run: python3 .github/scripts/apply_beta53.py
+      - name: Commit patched source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add source/main.cpp Makefile README.md
+          git commit -m "Add optional Performance Modes Battery profile export" || exit 0
+          git push origin beta53-performance-modes-save

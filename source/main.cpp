@@ -2345,14 +2345,14 @@ void renderTestStage() {
 void renderRealWorld() {
     title();
     if (!g_realWorldHelpPage) {
-        uiPrintf(5, "For final confirmation, play The Legend of Zelda: Tears of the Kingdom.");
+        uiPrintf(5, "Recommendation: Tears of the Kingdom");
         uiPrintf(7, "Play for at least 1 hour.");
-        uiPrintf(9, "During the check:");
+        uiPrintf(9, "Use:");
         uiPrintf(10, "• Normal gameplay");
-        uiPrintf(11, "• Battles and fast travel");
+        uiPrintf(11, "• Fast travel / battles");
         uiPrintf(12, "• Loading screens");
         uiPrintf(13, "• Sleep / Wake");
-        uiPrintf(15, "Watch for crashes, freezes or unexpected reboots.");
+        uiPrintf(15, "Watch for crash, freeze or reboot.");
         uiPrintf(19, "A : If instability occurs");
         uiPrintf(20, "+ : Stable / Continue to results");
         uiPrintf(21, "B : Exit");
@@ -2393,15 +2393,14 @@ void renderPerformanceSavePrompt() {
     gui::ModalView m{};
     m.version = HOC_WIZARD_VERSION;
     m.eyebrow = "PERFORMANCE MODES";
-    m.title = "Save Settings as Battery Profile in Performance Modes?";
+    m.title = "Save Settings to Performance Modes App?";
     m.body = {
-        "This performs the same save as Performance Modes -> Save Settings -> as Battery Mode.",
-        "The current Horizon OC config.ini, hoc.kip and ReverseNX-RT profile will be copied to the Performance Modes Battery profile.",
-        "The active Performance Modes profile will not be changed."
+        "Save the current settings as the Battery Profile.",
+        "The active profile will not be changed."
     };
     if (!g_performanceSaveError.empty())
         m.body.push_back("Save failed: " + g_performanceSaveError);
-    m.primaryAction = "Save Settings as Battery Profile";
+    m.primaryAction = "Save Battery Profile";
     m.tertiaryAction = "Skip";
     m.secondaryAction = "Back";
     m.tone = g_performanceSaveError.empty() ? gui::ModalTone::Cyan : gui::ModalTone::Red;

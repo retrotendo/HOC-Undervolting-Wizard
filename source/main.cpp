@@ -6,7 +6,9 @@
 #include "gui_console.hpp"
 
 #include <algorithm>
+#include <cerrno>
 #include <cstdarg>
+#include <dirent.h>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -27,6 +29,10 @@ constexpr const char* LEGACY_STATE = "sdmc:/switch/HOC-Battery-Wizard/state.ini"
 constexpr const char* HOC_CONFIG_INI = "sdmc:/config/horizon-oc/config.ini";
 constexpr const char* HOC_CONFIG_TMP = "sdmc:/config/horizon-oc/config.ini.wizard.tmp";
 constexpr const char* HOC_CONFIG_BACKUP = "sdmc:/config/horizon-oc/config.ini.wizard.bak";
+constexpr const char* PM_PACKAGE_INI = "sdmc:/switch/.packages/Performance Modes/package.ini";
+constexpr const char* PM_BATTERY_DIR = "sdmc:/switch/.packages/Performance Modes/Battery";
+constexpr const char* HOC_KIP = "sdmc:/atmosphere/kips/hoc.kip";
+constexpr const char* REVERSENX_DIR = "sdmc:/SaltySD/plugins/ReverseNX-RT";
 
 constexpr int STOCK_LOW_UV = 0;
 constexpr int STOCK_HIGH_UV = 0;
@@ -156,6 +162,9 @@ bool g_manualPass = false;
 bool g_lastVminAtFloor = false;
 bool g_guiPulse = false;
 bool g_realWorldHelpPage = false;
+bool g_performanceSaveNotice = false;
+bool g_performanceSaveSuccess = false;
+std::string g_performanceSaveError;
 
 void uiPresent();
 
@@ -497,6 +506,101 @@ bool copyFile(const char* from, const char* to) {
     if (!dst) return false;
     dst << src.rdbuf();
     return bool(dst);
+}
+
+
+bool ensureDirectory(const std::string& path) {
+    if (mkdir(path.c_str(), 0777) == 0) return true;
+    return errno == EEXIST;
+}
+
+bool copyDirectoryRecursive(const std::string& from, const std::string& to) {
+    DIR* dir = opendir(from.c_str());
+    if (!dir) return false;
+    if (!ensureDirectory(to)) {
+        closedir(dir);
+        return false;
+    }
+
+    bool ok = true;
+    while (dirent* entry = readdir(dir)) {
+        const std::string name = entry->d_name;
+        if (name == "." || name == "..") continue;
+
+        const std::string src = from + "/" + name;
+        const std::string dst = to + "/" + name;
+        struct stat st{};
+        if (stat(src.c_str(), &st) != 0) {
+            ok = false;
+            break;
+        }
+        if (S_ISDIR(st.st_mode)) {
+            if (!copyDirectoryRecursive(src, dst)) {
+                ok = false;
+                break;
+            }
+        } else if (S_ISREG(st.st_mode)) {
+            if (!copyFile(src.c_str(), dst.c_str())) {
+                ok = false;
+                break;
+            }
+        }
+    }
+    closedir(dir);
+    return ok;
+}
+
+bool saveBatteryProfileToPerformanceModes(std::string& errorText) {
+    errorText.clear();
+
+    if (access(PM_PACKAGE_INI, F_OK) != 0) {
+        errorText = "Performance Modes was not found. Nothing was changed.";
+        return false;
+    }
+    if (access(HOC_CONFIG_INI, F_OK) != 0) {
+        errorText = "Horizon OC config.ini was not found.";
+        return false;
+    }
+    if (access(HOC_KIP, F_OK) != 0) {
+        errorText = "hoc.kip was not found.";
+        return false;
+    }
+
+    if (!ensureDirectory("sdmc:/switch/.packages") ||
+        !ensureDirectory("sdmc:/switch/.packages/Performance Modes") ||
+        !ensureDirectory(PM_BATTERY_DIR)) {
+        errorText = "Could not create the Performance Modes Battery folder.";
+        return false;
+    }
+
+    const std::string batteryConfig = std::string(PM_BATTERY_DIR) + "/config.ini";
+    const std::string batteryKip = std::string(PM_BATTERY_DIR) + "/hoc.kip";
+    if (!copyFile(HOC_CONFIG_INI, batteryConfig.c_str())) {
+        errorText = "Could not copy Horizon OC config.ini.";
+        return false;
+    }
+    if (!copyFile(HOC_KIP, batteryKip.c_str())) {
+        errorText = "Could not copy hoc.kip.";
+        return false;
+    }
+
+    // Match Performance Modes -> Save Settings -> as Battery Mode.
+    // ReverseNX-RT is part of the Battery profile as well. An empty source
+    // folder is valid and is created by Performance Modes itself too.
+    ensureDirectory("sdmc:/SaltySD");
+    ensureDirectory("sdmc:/SaltySD/plugins");
+    if (!ensureDirectory(REVERSENX_DIR)) {
+        errorText = "Could not access the ReverseNX-RT profile folder.";
+        return false;
+    }
+    const std::string batteryReverseNx = std::string(PM_BATTERY_DIR) + "/ReverseNX-RT";
+    if (!copyDirectoryRecursive(REVERSENX_DIR, batteryReverseNx)) {
+        errorText = "Could not copy the ReverseNX-RT profile.";
+        return false;
+    }
+
+    fsdevCommitDevice("sdmc");
+    return true;
 }
 
 void migrateLegacyState() {
@@ -2273,9 +2377,41 @@ void renderComplete() {
     uiPrintf(10, "RAM VDDQ : %d mV", g.vddqGood);
     uiPrintf(11, "RAM VDD2 : %s", formatVdd2(g.vdd2GoodUv).c_str());
     uiPrintf(12, "CPU High UV : %d", g.highUvGood);
-    uiPrintf(14, "Saved to Performance Modes · Battery Mode");
-    uiPrintf(17, "B : Exit");
-    printResetHint(17);
+
+    if (g_performanceSaveSuccess) {
+        uiPrintf(14, "Saved to Performance Modes -> Battery Mode");
+        uiPrintf(17, "B : Exit");
+        printResetHint(17);
+    } else {
+        uiPrintf(16, "A : Save Settings as Battery Profile in Performance Modes");
+        uiPrintf(17, "X : Skip");
+        uiPrintf(18, "B : Exit");
+        printResetHint(18);
+    }
+}
+
+void renderPerformanceSaveNotice() {
+    gui::ModalView m{};
+    m.version = HOC_WIZARD_VERSION;
+    m.eyebrow = "PERFORMANCE MODES";
+    if (g_performanceSaveSuccess) {
+        m.title = "Battery profile saved";
+        m.body = {
+            "Saved to Performance Modes -> Battery Mode.",
+            "Horizon OC config.ini, hoc.kip and ReverseNX-RT were copied.",
+            "The active Performance Modes profile was not changed."
+        };
+        m.tone = gui::ModalTone::Green;
+    } else {
+        m.title = "Battery profile was not saved";
+        m.body = {
+            g_performanceSaveError.empty() ? "The profile could not be saved." : g_performanceSaveError,
+            "No Performance Modes profile switch was performed."
+        };
+        m.tone = gui::ModalTone::Red;
+    }
+    m.primaryAction = "Back to results";
+    gui::presentModal(m);
 }
 
 void renderInterruptedPrompt() {
@@ -2377,6 +2513,7 @@ void renderRebootModal() {
 
 void render() {
     guiPageClear();
+    if (g_performanceSaveNotice) { renderPerformanceSaveNotice(); return; }
     if (g_bootPrompt) { renderBootPrompt(); return; }
     if (g_vminScanScreen) { renderVminScanScreen(); return; }
     if (g_interruptedPrompt) { renderInterruptedPrompt(); return; }
@@ -3625,6 +3762,15 @@ int main(int argc, char** argv) {
             continue;
         }
 
+        if (g_performanceSaveNotice) {
+            if (k & HidNpadButton_A || k & HidNpadButton_B) {
+                g_performanceSaveNotice = false;
+                redraw = true;
+            }
+            svcSleepThread(20'000'000);
+            continue;
+        }
+
         if (g_resultScreen) {
             if (k & HidNpadButton_A || k & HidNpadButton_B) {
                 g_resultScreen = false;
@@ -3730,6 +3876,11 @@ int main(int argc, char** argv) {
                 }
             }
             redraw = true;
+        } else if ((k & HidNpadButton_X) && g.stage == Stage::Complete) {
+            // Skip only skips the optional Performance Modes export for now.
+            // Reopening the completed Wizard will offer it again.
+            saveState();
+            break;
         } else if (k & HidNpadButton_X) {
             // X is only a manual "known unstable" shortcut while searching a
             // new candidate. Long/final validations record FAIL automatically;
@@ -3745,6 +3896,14 @@ int main(int argc, char** argv) {
                 redraw = true;
             }
         } else if (k & HidNpadButton_A) {
+            if (g.stage == Stage::Complete) {
+                g_performanceSaveError.clear();
+                g_performanceSaveSuccess = saveBatteryProfileToPerformanceModes(g_performanceSaveError);
+                g_performanceSaveNotice = true;
+                redraw = true;
+                svcSleepThread(20'000'000);
+                continue;
+            }
             if (g.stage == Stage::RealWorldValidate) {
                 if (!g_realWorldHelpPage) {
                     g_realWorldHelpPage = true;

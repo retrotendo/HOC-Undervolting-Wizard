@@ -8,7 +8,7 @@ https://github.com/retrotendo/Ultrahand-Performance-Modes
 
 It guides the user through CPU Low UV, CPU Low VMIN, RAM VDDQ, RAM VDD2 and CPU High UV tuning, performs automatic clock setup for built-in tests, checks that the active Horizon OC configuration still matches the Wizard state, and records the final validated values.
 
-> This README reflects the current **v0.4.0-beta.52** workflow. Older beta-by-beta notes are available in GitHub Releases.
+> This README reflects the current **v0.4.0-beta.53** workflow. Older beta-by-beta notes are available in GitHub Releases.
 
 ---
 
@@ -506,6 +506,22 @@ The result file includes:
 - detected CPU voltage regions and representative clocks when available.
 
 These are the values intended for the **Performance Modes Battery Mode** workflow.
+
+### Optional: Save Settings as Battery Profile in Performance Modes
+
+On the Complete page the Wizard offers an explicit optional export:
+
+- **A — Save Settings as Battery Profile in Performance Modes**
+- **X — Skip**
+- **B — Exit**
+
+Nothing is exported automatically. Choosing **A** performs the same profile copy used by `Performance Modes -> Save Settings -> as Battery Mode`:
+
+- `/config/horizon-oc/config.ini` -> `/switch/.packages/Performance Modes/Battery/config.ini`
+- `/atmosphere/kips/hoc.kip` -> `/switch/.packages/Performance Modes/Battery/hoc.kip`
+- `/SaltySD/plugins/ReverseNX-RT/` -> `/switch/.packages/Performance Modes/Battery/ReverseNX-RT/`
+
+The Wizard does **not** switch or mark the active Performance Modes profile. It only saves the current settings as the Battery profile. If Performance Modes is not installed, the Wizard reports that and does not invent a new installation.
 
 ---
 

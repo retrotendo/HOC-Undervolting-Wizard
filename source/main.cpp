@@ -149,6 +149,10 @@ struct WizardState {
     int testKind = 0;
     int testDurationSec = 0;
     int testStage = 0;
+
+    // Optional final export to Performance Modes.
+    // 0 = decision pending, 1 = saved, 2 = skipped.
+    int batteryProfileSaveChoice = 0;
 };
 
 WizardState g;
@@ -162,8 +166,8 @@ bool g_manualPass = false;
 bool g_lastVminAtFloor = false;
 bool g_guiPulse = false;
 bool g_realWorldHelpPage = false;
+bool g_saveBatteryPrompt = false;
 bool g_performanceSaveNotice = false;
-bool g_performanceSaveSuccess = false;
 std::string g_performanceSaveError;
 
 void uiPresent();
@@ -651,6 +655,7 @@ bool saveState() {
     f << "testKind=" << g.testKind << "\n";
     f << "testDurationSec=" << g.testDurationSec << "\n";
     f << "testStage=" << g.testStage << "\n";
+    f << "batteryProfileSaveChoice=" << g.batteryProfileSaveChoice << "\n";
     f.flush();
     f.close();
     if (access(STATE, F_OK) == 0) remove(STATE);
@@ -695,6 +700,7 @@ void assignKV(const std::string& key, const std::string& value) {
     else if (key == "testKind") g.testKind = v;
     else if (key == "testDurationSec") g.testDurationSec = v;
     else if (key == "testStage") g.testStage = v;
+    else if (key == "batteryProfileSaveChoice") g.batteryProfileSaveChoice = v;
 }
 
 bool loadState() {
@@ -2377,40 +2383,43 @@ void renderComplete() {
     uiPrintf(10, "RAM VDDQ : %d mV", g.vddqGood);
     uiPrintf(11, "RAM VDD2 : %s", formatVdd2(g.vdd2GoodUv).c_str());
     uiPrintf(12, "CPU High UV : %d", g.highUvGood);
-
-    if (g_performanceSaveSuccess) {
+    if (g.batteryProfileSaveChoice == 1)
         uiPrintf(14, "Saved to Performance Modes -> Battery Mode");
-        uiPrintf(17, "B : Exit");
-        printResetHint(17);
-    } else {
-        uiPrintf(16, "A : Save Settings as Battery Profile in Performance Modes");
-        uiPrintf(17, "X : Skip");
-        uiPrintf(18, "B : Exit");
-        printResetHint(18);
-    }
+    uiPrintf(17, "B : Exit");
+    printResetHint(17);
+}
+
+void renderPerformanceSavePrompt() {
+    gui::ModalView m{};
+    m.version = HOC_WIZARD_VERSION;
+    m.eyebrow = "PERFORMANCE MODES";
+    m.title = "Save Settings as Battery Profile in Performance Modes?";
+    m.body = {
+        "This performs the same save as Performance Modes -> Save Settings -> as Battery Mode.",
+        "The current Horizon OC config.ini, hoc.kip and ReverseNX-RT profile will be copied to the Performance Modes Battery profile.",
+        "The active Performance Modes profile will not be changed."
+    };
+    if (!g_performanceSaveError.empty())
+        m.body.push_back("Save failed: " + g_performanceSaveError);
+    m.primaryAction = "Save Settings as Battery Profile";
+    m.tertiaryAction = "Skip";
+    m.secondaryAction = "Back";
+    m.tone = g_performanceSaveError.empty() ? gui::ModalTone::Cyan : gui::ModalTone::Red;
+    gui::presentModal(m);
 }
 
 void renderPerformanceSaveNotice() {
     gui::ModalView m{};
     m.version = HOC_WIZARD_VERSION;
     m.eyebrow = "PERFORMANCE MODES";
-    if (g_performanceSaveSuccess) {
-        m.title = "Battery profile saved";
-        m.body = {
-            "Saved to Performance Modes -> Battery Mode.",
-            "Horizon OC config.ini, hoc.kip and ReverseNX-RT were copied.",
-            "The active Performance Modes profile was not changed."
-        };
-        m.tone = gui::ModalTone::Green;
-    } else {
-        m.title = "Battery profile was not saved";
-        m.body = {
-            g_performanceSaveError.empty() ? "The profile could not be saved." : g_performanceSaveError,
-            "No Performance Modes profile switch was performed."
-        };
-        m.tone = gui::ModalTone::Red;
-    }
-    m.primaryAction = "Back to results";
+    m.title = "Battery profile saved";
+    m.body = {
+        "Saved to Performance Modes -> Battery Mode.",
+        "Horizon OC config.ini, hoc.kip and ReverseNX-RT were copied.",
+        "The active Performance Modes profile was not changed."
+    };
+    m.primaryAction = "Continue to results";
+    m.tone = gui::ModalTone::Green;
     gui::presentModal(m);
 }
 
@@ -2514,6 +2523,7 @@ void renderRebootModal() {
 void render() {
     guiPageClear();
     if (g_performanceSaveNotice) { renderPerformanceSaveNotice(); return; }
+    if (g_saveBatteryPrompt) { renderPerformanceSavePrompt(); return; }
     if (g_bootPrompt) { renderBootPrompt(); return; }
     if (g_vminScanScreen) { renderVminScanScreen(); return; }
     if (g_interruptedPrompt) { renderInterruptedPrompt(); return; }
@@ -2813,6 +2823,9 @@ void handlePass() {
         case Stage::RealWorldValidate:
             g_realWorldHelpPage = false;
             g.stage = Stage::Complete;
+            g.batteryProfileSaveChoice = 0;
+            g_performanceSaveError.clear();
+            g_saveBatteryPrompt = true;
             writeResults();
             break;
         case Stage::Complete: break;
@@ -3466,6 +3479,7 @@ int main(int argc, char** argv) {
 
     g_interruptedPrompt = g.testRunning;
     g_bootPrompt = g.rebootPending;
+    g_saveBatteryPrompt = (g.stage == Stage::Complete && g.batteryProfileSaveChoice == 0);
 
     bool redraw = true;
     int guiPulseTicks = 0;
@@ -3771,6 +3785,35 @@ int main(int argc, char** argv) {
             continue;
         }
 
+        if (g_saveBatteryPrompt) {
+            if (k & HidNpadButton_A) {
+                g_performanceSaveError.clear();
+                if (saveBatteryProfileToPerformanceModes(g_performanceSaveError)) {
+                    g.batteryProfileSaveChoice = 1;
+                    g_saveBatteryPrompt = false;
+                    g_performanceSaveNotice = true;
+                    saveState();
+                }
+                redraw = true;
+            } else if (k & HidNpadButton_X) {
+                g.batteryProfileSaveChoice = 2;
+                g_saveBatteryPrompt = false;
+                g_performanceSaveError.clear();
+                saveState();
+                redraw = true;
+            } else if (k & HidNpadButton_B) {
+                g.batteryProfileSaveChoice = 0;
+                g_saveBatteryPrompt = false;
+                g_performanceSaveError.clear();
+                g.stage = Stage::RealWorldValidate;
+                g_realWorldHelpPage = true;
+                saveState();
+                redraw = true;
+            }
+            svcSleepThread(20'000'000);
+            continue;
+        }
+
         if (g_resultScreen) {
             if (k & HidNpadButton_A || k & HidNpadButton_B) {
                 g_resultScreen = false;
@@ -3876,11 +3919,6 @@ int main(int argc, char** argv) {
                 }
             }
             redraw = true;
-        } else if ((k & HidNpadButton_X) && g.stage == Stage::Complete) {
-            // Skip only skips the optional Performance Modes export for now.
-            // Reopening the completed Wizard will offer it again.
-            saveState();
-            break;
         } else if (k & HidNpadButton_X) {
             // X is only a manual "known unstable" shortcut while searching a
             // new candidate. Long/final validations record FAIL automatically;
@@ -3896,14 +3934,6 @@ int main(int argc, char** argv) {
                 redraw = true;
             }
         } else if (k & HidNpadButton_A) {
-            if (g.stage == Stage::Complete) {
-                g_performanceSaveError.clear();
-                g_performanceSaveSuccess = saveBatteryProfileToPerformanceModes(g_performanceSaveError);
-                g_performanceSaveNotice = true;
-                redraw = true;
-                svcSleepThread(20'000'000);
-                continue;
-            }
             if (g.stage == Stage::RealWorldValidate) {
                 if (!g_realWorldHelpPage) {
                     g_realWorldHelpPage = true;

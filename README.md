@@ -509,11 +509,13 @@ These are the values intended for the **Performance Modes Battery Mode** workflo
 
 ### Optional: Save Settings as Battery Profile in Performance Modes
 
-On the Complete page the Wizard offers an explicit optional export:
+After the final real-world guidance, the Wizard opens a separate confirmation:
 
-- **A — Save Settings as Battery Profile in Performance Modes**
+**Save Settings as Battery Profile in Performance Modes?**
+
+- **A — Save Settings as Battery Profile**
 - **X — Skip**
-- **B — Exit**
+- **B — Back** to the final real-world guidance page
 
 Nothing is exported automatically. Choosing **A** performs the same profile copy used by `Performance Modes -> Save Settings -> as Battery Mode`:
 

@@ -8,7 +8,7 @@ https://github.com/retrotendo/Ultrahand-Performance-Modes
 
 It guides the user through CPU Low UV, CPU Low VMIN, RAM VDDQ, RAM VDD2 and CPU High UV tuning, performs automatic clock setup for built-in tests, checks that the active Horizon OC configuration still matches the Wizard state, and records the final validated values.
 
-> This README reflects the current **v0.4.0-beta.54** workflow. Older beta-by-beta notes are available in GitHub Releases.
+> This README reflects the current **v0.4.0-beta.55** workflow. Older beta-by-beta notes are available in GitHub Releases.
 
 ---
 
